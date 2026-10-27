@@ -1,4 +1,5 @@
 import {getViewedPortalLinks} from "./geometry.mjs";
+import {getEyes} from "./eyes.mjs";
 
 /**
  * Portal windows: a live picture of the far side of each portal, drawn over the space beyond it.
@@ -46,11 +47,19 @@ export default class PortalWindows {
   render() {
     if ( !this.container ) return;
     const links = getViewedPortalLinks();
-    const eyes = PortalWindows.#getEyes();
+    const eyes = getEyes();
     const active = new Set();
 
     for ( const link of links ) {
-      const wedges = eyes.map(eye => link.wedge(eye)).filter(Boolean);
+
+      // Only the parts of the portal each viewer can see past walls
+      const wedges = [];
+      for ( const eye of eyes ) {
+        for ( const [t0, t1] of link.visibleIntervals(eye, eye.los) ) {
+          const wedge = link.wedge(eye, t0, t1);
+          if ( wedge ) wedges.push(wedge);
+        }
+      }
       if ( !wedges.length ) continue;
       active.add(link.id);
       const w = this.#getWindow(link.id);
@@ -78,22 +87,6 @@ export default class PortalWindows {
       const w = this.windows.get(link.id);
       if ( w ) this.#capture(link, w.texture);
     }
-  }
-
-  /* ---------------------------------------- */
-
-  /**
-   * The points the current user looks from: their vision sources, or their controlled Tokens
-   * when Token vision is off. Without any, portals show nothing and the real map is visible.
-   * @returns {Point[]}
-   */
-  static #getEyes() {
-    if ( canvas.visibility.tokenVision ) {
-      return canvas.effects.visionSources
-        .filter(s => !s.isPortalGhost && s.active && !s.data.preview)
-        .map(s => ({x: s.data.x, y: s.data.y}));
-    }
-    return canvas.tokens.controlled.map(t => t.center);
   }
 
   /* ---------------------------------------- */
@@ -167,7 +160,7 @@ export default class PortalWindows {
    */
   #moveTokensThrough(link) {
     const moved = new Map();
-    const area = link.entrance.bounds;
+    const area = link.planeBounds(canvas.grid.size * 2);
     for ( const token of canvas.tokens.placeables ) {
       const mesh = token.mesh;
       if ( !mesh || !token.visible || !token.bounds.intersects(area) ) continue;

@@ -7,16 +7,30 @@ A Foundry Virtual Tabletop v14 module for non-Euclidean geometry.
 | Feature | Status | How |
 | --- | --- | --- |
 | **Portals** | Seamless walking, seeing, and camera through portals | Region behavior **Portal** |
+| **Folds** | A Region cut out of space: long outside, short inside | Region behavior **Fold** |
 | **Impossible spaces** | Movement cost works | Region behavior **Impossible Space** |
 | **Curved space** | Scene data helpers only | `scripts/curved-space/geometry.mjs` |
+
+### Folds: long on the outside, short on the inside
+
+The simplest example, a hallway:
+
+1. Draw a hallway 10 squares long with walls along both sides.
+2. Draw a Region over its middle 8 squares and add the **Fold** behavior.
+3. Select a Token with vision and look down the hallway: the far end is right there, 2 squares away.
+   Walk in, and after 2 squares you come out at the far end.
+
+From outside, the hallway still looks 10 squares long on the map. A fold joins its Region's two
+opposite edges and removes everything between them. **Shortened Direction** picks which pair of edges;
+Automatic uses the longer side.
 
 ### Portals
 
 1. Put walls on both sides of two doorways, A and B.
-2. Draw a thin Region strip across doorway A and add the **Portal** behavior with **Exit** set to a
-   matching strip across doorway B. With **Two-Way** on, B gets a portal back to A automatically.
+2. Draw a Region strip across doorway A and add the **Portal** behavior with **Exit** set to a
+   matching strip across doorway B. Set **Crossing Direction** to the way Tokens walk through. With **Two-Way** on, B gets a portal back to A automatically.
 
-Each portal's *plane* is the line through its Region's center along the longer side. Then:
+Each portal's *plane* is the line through its Region's center, across the crossing direction. Then:
 
 - **Walking:** a move that crosses A's plane continues out of B's plane as one uninterrupted movement.
   Drag a Token to a spot you see through the portal and it walks there.
@@ -59,6 +73,8 @@ scripts/
   settings.mjs
   portals/
     portal-behavior.mjs    the Portal region behavior
+    fold-behavior.mjs      the Fold region behavior
+    eyes.mjs               where the viewer looks from
     geometry.mjs           portal planes and the transform between them
     pathing.mjs            routes movement through portals
     camera.mjs             moves the view with Tokens that cross

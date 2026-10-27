@@ -1,4 +1,5 @@
 import {getViewedPortalLinks} from "./geometry.mjs";
+import {getEyes} from "./eyes.mjs";
 
 /**
  * Seeing through portals.
@@ -57,10 +58,17 @@ function getPortalCuts(origin) {
   const {x, y, width, height} = canvas.dimensions.rect;
   const canvasPolygon = new PIXI.Polygon(x, y, x + width, y, x + width, y + height, x, y + height);
   const cuts = [];
+  let los;
   for ( const link of links ) {
-    const wedge = link.wedge(origin);
-    if ( !wedge ) continue;
-    cuts.push(canvasPolygon.intersectPolygon(wedge, {clipType: ClipperLib.ClipType.ctDifference}));
+    if ( !link.isEntrySide(origin) ) continue;
+
+    // Only cut where the portal is actually in view, so walls elsewhere keep working as usual
+    los ??= CONFIG.Canvas.polygonBackends.sight.create({x: origin.x, y: origin.y, elevation: origin.elevation ?? 0},
+      {type: "sight", level: canvas.level});
+    for ( const [t0, t1] of link.visibleIntervals(origin, los) ) {
+      const wedge = link.wedge(origin, t0, t1);
+      if ( wedge ) cuts.push(canvasPolygon.intersectPolygon(wedge, {clipType: ClipperLib.ClipType.ctDifference}));
+    }
   }
   return cuts;
 }
@@ -75,23 +83,27 @@ export function syncGhostVision() {
   const wanted = new Map();
   if ( canvas.visibility.tokenVision ) {
     const links = getViewedPortalLinks();
-    for ( const source of canvas.effects.visionSources ) {
-      if ( source.isPortalGhost || !source.active || source.data.preview ) continue;
-      const eye = {x: source.data.x, y: source.data.y};
+    for ( const eye of getEyes() ) {
+      const source = eye.source;
       for ( const link of links ) {
-        const wedge = link.wedge(eye);
-        if ( !wedge ) continue;
-        const exitEye = link.apply(eye);
-        const data = {
-          ...source.data,
-          x: exitEye.x,
-          y: exitEye.y,
-          rotation: source.data.rotation + Math.toDegrees(link.angle),
-          radius: source.data.radius * link.scale,
-          lightRadius: source.data.lightRadius * link.scale,
-          externalRadius: source.data.externalRadius * link.scale
-        };
-        wanted.set(`${source.sourceId}.noneuclid.${link.id}`, {source, data, boundary: link.applyPolygon(wedge)});
+
+        // One ghost per stretch of the portal the Token can actually see past walls
+        const intervals = link.visibleIntervals(eye, eye.los);
+        for ( const [i, [t0, t1]] of intervals.entries() ) {
+          const wedge = link.wedge(eye, t0, t1);
+          if ( !wedge ) continue;
+          const exitEye = link.apply(eye);
+          const data = {
+            ...source.data,
+            x: exitEye.x,
+            y: exitEye.y,
+            rotation: source.data.rotation + Math.toDegrees(link.angle),
+            radius: source.data.radius * link.scale,
+            lightRadius: source.data.lightRadius * link.scale,
+            externalRadius: source.data.externalRadius * link.scale
+          };
+          wanted.set(`${source.sourceId}.noneuclid.${link.id}.${i}`, {source, data, boundary: link.applyPolygon(wedge)});
+        }
       }
     }
   }

@@ -5,6 +5,7 @@ import {patchVisionSources, syncGhostVision, clearGhostVision} from "./vision.mj
 import PortalWindows from "./renderer.mjs";
 
 export {default as PortalRegionBehaviorType} from "./portal-behavior.mjs";
+export {default as FoldRegionBehaviorType} from "./fold-behavior.mjs";
 export {PortalLink, getPortalLinks} from "./geometry.mjs";
 
 const windows = new PortalWindows();

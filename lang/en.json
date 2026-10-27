@@ -3,6 +3,7 @@
     "RegionBehavior": {
       "noneuclid": {
         "portal": "Portal",
+        "fold": "Fold",
         "impossibleSpace": "Impossible Space"
       }
     }
@@ -10,7 +11,8 @@
   "HINTS": {
     "RegionBehavior": {
       "noneuclid": {
-        "portal": "A doorway to another place. Walking across the Region's center line continues the walk out of the exit Region, and looking through it shows the space beyond the exit. Draw it as a thin strip across a doorway with walls on both sides.",
+        "portal": "A doorway to another place. Walking across the Region's center line continues the walk out of the exit Region, and looking through it shows the space beyond the exit. Draw it as a strip across a doorway with walls on both sides.",
+        "fold": "Cuts the Region out of space and joins its opposite edges. A long hallway with a fold over its middle looks long from outside but is short to walk, and looking down it shows the far end up close.",
         "impossibleSpace": "The Region is bigger or smaller on the inside: movement through it costs more or less than its drawn size."
       }
     }
@@ -27,6 +29,10 @@
         "exit": {
           "label": "Exit",
           "hint": "The Region the portal leads to. In the same Scene the passage is seamless; in another Scene the Token is teleported."
+        },
+        "crossing": {
+          "label": "Crossing Direction",
+          "hint": "The direction Tokens walk through the portal and its exit. Automatic assumes each Region is a strip drawn across a doorway, so they walk across its short side."
         },
         "flip": {
           "label": "Flip",
@@ -52,6 +58,19 @@
         "euclidean": "Euclidean",
         "hyperbolic": "Hyperbolic",
         "spherical": "Spherical"
+      }
+    },
+    "Crossing": {
+      "auto": "Automatic",
+      "northSouth": "North-South",
+      "eastWest": "East-West"
+    },
+    "Fold": {
+      "FIELDS": {
+        "direction": {
+          "label": "Shortened Direction",
+          "hint": "The direction of travel the fold removes. Automatic uses the Region's longer side, as for a Region drawn along a hallway."
+        }
       }
     }
   }

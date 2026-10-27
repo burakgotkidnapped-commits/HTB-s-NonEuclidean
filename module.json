@@ -29,6 +29,7 @@
   "documentTypes": {
     "RegionBehavior": {
       "portal": {},
+      "fold": {},
       "impossibleSpace": {}
     }
   },

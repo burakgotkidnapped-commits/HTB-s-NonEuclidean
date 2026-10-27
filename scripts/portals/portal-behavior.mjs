@@ -1,4 +1,5 @@
 import {BEHAVIOR_TYPES, log} from "../constants.mjs";
+import {PortalLink, centerPlane} from "./geometry.mjs";
 
 const {fields} = foundry.data;
 const {RegionBehaviorType} = foundry.data.regionBehaviors;
@@ -7,17 +8,18 @@ const {REGION_EVENTS} = CONST;
 /**
  * A portal. The Region acts as a doorway whose far side is the space beyond its exit Region.
  *
- * Each Region's "plane" is the line through its center along its longer side. Walking across
- * the plane continues the walk out of the exit's plane, and looking through the portal shows the
- * space beyond the exit. Draw portal Regions as thin strips across doorways, with walls on
- * either side, so the portal is the only way to see or walk past that line.
+ * Each Region's "plane" is the line through its center, running across the direction of travel.
+ * Walking across the plane continues the walk out of the exit's plane, and looking through the
+ * portal shows the space beyond the exit. Draw portal Regions as strips across doorways, with
+ * walls on either side, so the portal is the only way to see or walk past that line.
  *
  * Within one Scene, movement is routed through the portal before it starts (see pathing.mjs),
  * so it never stops at the portal. An exit in another Scene teleports the Token on entry.
  *
- * @property {string|null} exit    UUID of the exit Region
- * @property {boolean} flip        Come out of the exit facing the opposite way
- * @property {boolean} twoWay      Keep a matching portal on the exit that leads back here
+ * @property {string|null} exit                           UUID of the exit Region
+ * @property {"auto"|"northSouth"|"eastWest"} crossing     The direction Tokens travel through both Regions
+ * @property {boolean} flip                                Come out of the exit facing the opposite way
+ * @property {boolean} twoWay                              Keep a matching portal on the exit that leads back here
  */
 export default class PortalRegionBehaviorType extends RegionBehaviorType {
 
@@ -30,6 +32,11 @@ export default class PortalRegionBehaviorType extends RegionBehaviorType {
   static defineSchema() {
     return {
       exit: new fields.DocumentUUIDField({type: "Region", relative: true, relativize: true}),
+      crossing: new fields.StringField({required: true, initial: "auto", choices: {
+        auto: "NONEUCLID.Crossing.auto",
+        northSouth: "NONEUCLID.Crossing.northSouth",
+        eastWest: "NONEUCLID.Crossing.eastWest"
+      }}),
       flip: new fields.BooleanField(),
       twoWay: new fields.BooleanField({initial: true})
     };
@@ -58,6 +65,30 @@ export default class PortalRegionBehaviorType extends RegionBehaviorType {
     if ( exit instanceof foundry.documents.RegionDocument ) return exit;
     log("warn", `Portal ${this.region?.name} has a missing exit ${this.exit}`);
     return null;
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * The link this portal makes, if its exit is in the same Scene.
+   * @returns {PortalLink[]}
+   */
+  getPortalLinks() {
+    const exit = this.getExit();
+    if ( !exit || (exit === this.region) || (exit.parent !== this.scene) ) return [];
+    if ( !exit.bounds.width || !exit.bounds.height ) return [];
+
+    // Northbound travel crosses a plane running east-west
+    const orientation = {auto: "auto", northSouth: "horizontal", eastWest: "vertical"}[this.crossing];
+    return [new PortalLink({
+      id: this.behavior.id,
+      behavior: this.behavior,
+      entrance: this.region,
+      exit,
+      from: centerPlane(this.region.bounds, orientation),
+      to: centerPlane(exit.bounds, orientation),
+      flip: this.flip
+    })];
   }
 
   /* ---------------------------------------- */
@@ -122,7 +153,7 @@ export default class PortalRegionBehaviorType extends RegionBehaviorType {
     await exit.createEmbeddedDocuments("RegionBehavior", [{
       type: BEHAVIOR_TYPES.portal,
       name: this.behavior.name,
-      system: {exit: this.region.uuid, flip: this.flip, twoWay: true}
+      system: {exit: this.region.uuid, crossing: this.crossing, flip: this.flip, twoWay: true}
     }]);
   }
 }
