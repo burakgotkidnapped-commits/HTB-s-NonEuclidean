@@ -5,23 +5,46 @@ import {registerWallPortals} from "./walls.mjs";
 import {followPortalJumps, resetCamera} from "./camera.mjs";
 import {patchVisionSources, syncGhostVision, clearGhostVision} from "./vision.mjs";
 import PortalWindows from "./renderer.mjs";
+import {log} from "../constants.mjs";
 
 export {PortalLink, getPortalLinks, getPortalFlags} from "./geometry.mjs";
 
 const windows = new PortalWindows();
+
+/** Per-frame steps that failed and were switched off, so they can't stall the canvas every frame. */
+const failed = new Set();
+
+/**
+ * Run a per-frame step. An error thrown inside a ticker callback stops the rest of that frame,
+ * including Foundry's own perception and rendering, so a failing step is reported once and disabled.
+ * @param {string} name
+ * @param {Function} step
+ */
+function runStep(name, step) {
+  if ( failed.has(name) ) return;
+  try {
+    step();
+  } catch(err) {
+    failed.add(name);
+    log("error", `Portal step "${name}" failed and was turned off until the canvas is redrawn`, err);
+    ui.notifications.error(`Non-Euclidean: portal ${name} failed and was turned off. See the console (F12) for details.`);
+    if ( name === "vision" ) clearGhostVision();
+    if ( name === "windows" ) windows.tearDown();
+  }
+}
 
 /**
  * Before perception updates: move the camera with Tokens that jumped through a portal,
  * then line up ghost vision with the Tokens' real vision.
  */
 function beforePerception() {
-  followPortalJumps();
-  syncGhostVision();
+  runStep("camera", followPortalJumps);
+  runStep("vision", syncGhostVision);
 }
 
 /** After animations, just before the frame is rendered: capture the portal windows. */
 function beforeRender() {
-  windows.render();
+  runStep("windows", () => windows.render());
 }
 
 /** Called during the init hook. */
@@ -34,6 +57,7 @@ export function init() {
 
   Hooks.on("canvasReady", () => {
     const p = PIXI.UPDATE_PRIORITY;
+    failed.clear();
     windows.draw();
     canvas.app.ticker.add(beforePerception, undefined, p.PERCEPTION + 0.5);
     canvas.app.ticker.add(beforeRender, undefined, p.LOW + 0.5);

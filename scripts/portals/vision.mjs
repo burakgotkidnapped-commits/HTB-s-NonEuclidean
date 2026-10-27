@@ -1,5 +1,6 @@
 import {getViewedPortalLinks} from "./geometry.mjs";
 import {getEyes} from "./eyes.mjs";
+import {log} from "../constants.mjs";
 
 /**
  * Seeing through portals.
@@ -28,7 +29,13 @@ export function patchVisionSources() {
     const config = original.call(this);
     const shapes = config.boundaryShapes = [...(config.boundaryShapes ?? [])];
     if ( this.portalBoundary ) shapes.push(this.portalBoundary);
-    else if ( !this.data.preview ) shapes.push(...getPortalCuts(this.data));
+    else if ( !this.data.preview ) {
+      try {
+        shapes.push(...getPortalCuts(this.data));
+      } catch(err) {
+        log("error", "Failed to cut vision at portals", err);
+      }
+    }
     return config;
   };
 
