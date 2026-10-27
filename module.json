@@ -1,0 +1,38 @@
+{
+  "id": "noneuclid",
+  "title": "HTB's Non-Euclidean",
+  "description": "Non-Euclidean geometry for Foundry VTT: portals, impossible spaces, and curved space.",
+  "version": "0.1.0",
+  "authors": [
+    {
+      "name": "Burak",
+      "email": "burakgotkidnapped@gmail.com"
+    }
+  ],
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "esmodules": [
+    "scripts/main.mjs"
+  ],
+  "styles": [
+    "styles/noneuclid.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "documentTypes": {
+    "RegionBehavior": {
+      "portal": {},
+      "impossibleSpace": {}
+    }
+  },
+  "url": "https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian",
+  "manifest": "https://raw.githubusercontent.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/main/module.json",
+  "download": "https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/archive/refs/heads/main.zip"
+}

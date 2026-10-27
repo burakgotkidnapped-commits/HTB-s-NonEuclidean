@@ -1,0 +1,62 @@
+{
+  "TYPES": {
+    "RegionBehavior": {
+      "noneuclid": {
+        "portal": "Portal",
+        "impossibleSpace": "Impossible Space"
+      }
+    }
+  },
+  "HINTS": {
+    "RegionBehavior": {
+      "noneuclid": {
+        "portal": "Tokens that walk into the Region step out of the linked exit Region, keeping their position relative to the portal.",
+        "impossibleSpace": "The Region is bigger or smaller on the inside: movement through it costs more or less than its drawn size."
+      }
+    }
+  },
+  "NONEUCLID": {
+    "Settings": {
+      "debug": {
+        "name": "Debug Logging",
+        "hint": "Log extra details about portals and other non-Euclidean effects to the browser console."
+      }
+    },
+    "Portal": {
+      "FIELDS": {
+        "exit": {
+          "label": "Exit",
+          "hint": "The Region a Token comes out of. Give that Region its own Portal behavior pointing back here for a two-way doorway."
+        },
+        "preserveOffset": {
+          "label": "Preserve Offset",
+          "hint": "Keep the Token's position relative to the portal. Otherwise it comes out at the center of the exit."
+        },
+        "rotation": {
+          "label": "Rotation",
+          "hint": "Degrees the Token turns by when it comes out of the exit."
+        },
+        "snap": {
+          "label": "Snap to Grid",
+          "hint": "Snap the Token to the grid at the exit."
+        }
+      },
+      "NoCrossScenePermission": "You do not have permission to move Tokens between Scenes."
+    },
+    "ImpossibleSpace": {
+      "FIELDS": {
+        "scale": {
+          "label": "Inside Scale",
+          "hint": "How many times longer distances are inside the Region. 2 means bigger on the inside; 0.5 means smaller."
+        }
+      }
+    },
+    "CurvedSpace": {
+      "Geometries": {
+        "euclidean": "Euclidean",
+        "hyperbolic": "Hyperbolic",
+        "spherical": "Spherical"
+      }
+    }
+  }
+}
