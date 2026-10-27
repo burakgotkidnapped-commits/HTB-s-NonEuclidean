@@ -7,7 +7,7 @@ const previousCenters = new Map();
  * Keep the camera locked to Tokens that pass through a portal.
  * Called once per frame, after Token animation and before rendering. When a controlled Token's
  * rendered position jumps from a portal to the matching point at its exit, the view is moved by
- * the same transform on the same frame, so the Token stays put on screen.
+ * the same transform on the same frame, so nothing on screen changes.
  */
 export function followPortalJumps() {
   const links = getViewedPortalLinks();
@@ -25,11 +25,12 @@ export function followPortalJumps() {
 
     for ( const link of links ) {
       const expected = link.apply(previous);
-      const driftX = center.x - expected.x;
-      const driftY = center.y - expected.y;
-      if ( Math.hypot(driftX, driftY) > tolerance ) continue;
+      if ( Math.hypot(center.x - expected.x, center.y - expected.y) > tolerance ) continue;
+
+      // Move the view by exactly the portal's transform, so the scene stays put on screen. The Token's
+      // own step this frame, and its hop across the portal, show as ordinary movement
       const pivot = link.apply(canvas.stage.pivot);
-      canvas.pan({x: pivot.x + driftX, y: pivot.y + driftY, scale: canvas.stage.scale.x / link.scale});
+      canvas.pan({x: pivot.x, y: pivot.y, scale: canvas.stage.scale.x / link.scale});
       panned = true;
       break;
     }

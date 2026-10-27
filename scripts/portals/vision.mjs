@@ -188,7 +188,8 @@ export function syncGhostVision() {
         // One ghost per stretch of the portal the Token can actually see past walls
         const intervals = link.visibleIntervals(eye, eye.los);
         for ( const [i, [t0, t1]] of intervals.entries() ) {
-          const wedge = union(link.wedge(eye, t0, t1), link.band(seamOverlap())); // Let ghost sight cover the exit's seam
+          // Let ghost sight start a little before the exit, so its soft edge doesn't show at the portal
+          const wedge = union(link.wedge(eye, t0, t1), link.band(eye, t0, t1, seamOverlap()));
           if ( !wedge ) continue;
           const exitEye = link.apply(eye);
           const data = {

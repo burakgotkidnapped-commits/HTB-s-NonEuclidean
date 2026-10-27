@@ -287,15 +287,22 @@ export class PortalLink {
   /* ---------------------------------------- */
 
   /**
-   * A strip along the entrance Wall, reaching a distance to either side of it.
+   * A strip along part of the entrance Wall, reaching a distance toward a viewer. It stays on the
+   * viewer's side: beyond the Wall it would light what lies outside the viewer's wedge.
+   * @param {Point} eye
+   * @param {number} t0          Start of the part of the Wall, as a fraction
+   * @param {number} t1          End of the part of the Wall, as a fraction
    * @param {number} padding
    * @returns {PIXI.Polygon}
    */
-  band(padding) {
-    const {a, b, direction} = this.from;
-    const nx = -direction.y * padding;
-    const ny = direction.x * padding;
-    return new PIXI.Polygon(a.x + nx, a.y + ny, b.x + nx, b.y + ny, b.x - nx, b.y - ny, a.x - nx, a.y - ny);
+  band(eye, t0, t1, padding) {
+    const {direction} = this.from;
+    const toward = this.side(eye);
+    const nx = -direction.y * toward * padding;
+    const ny = direction.x * toward * padding;
+    const a = this.pointAt(t0);
+    const b = this.pointAt(t1);
+    return new PIXI.Polygon(a.x, a.y, b.x, b.y, b.x + nx, b.y + ny, a.x + nx, a.y + ny);
   }
 
   /* ---------------------------------------- */
