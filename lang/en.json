@@ -10,7 +10,7 @@
   "HINTS": {
     "RegionBehavior": {
       "noneuclid": {
-        "portal": "Tokens that walk into the Region step out of the linked exit Region, keeping their position relative to the portal.",
+        "portal": "A doorway to another place. Walking across the Region's center line continues the walk out of the exit Region, and looking through it shows the space beyond the exit. Draw it as a thin strip across a doorway with walls on both sides.",
         "impossibleSpace": "The Region is bigger or smaller on the inside: movement through it costs more or less than its drawn size."
       }
     }
@@ -26,19 +26,15 @@
       "FIELDS": {
         "exit": {
           "label": "Exit",
-          "hint": "The Region a Token comes out of. Give that Region its own Portal behavior pointing back here for a two-way doorway."
+          "hint": "The Region the portal leads to. In the same Scene the passage is seamless; in another Scene the Token is teleported."
         },
-        "preserveOffset": {
-          "label": "Preserve Offset",
-          "hint": "Keep the Token's position relative to the portal. Otherwise it comes out at the center of the exit."
+        "flip": {
+          "label": "Flip",
+          "hint": "Come out of the exit heading the opposite way."
         },
-        "rotation": {
-          "label": "Rotation",
-          "hint": "Degrees the Token turns by when it comes out of the exit."
-        },
-        "snap": {
-          "label": "Snap to Grid",
-          "hint": "Snap the Token to the grid at the exit."
+        "twoWay": {
+          "label": "Two-Way",
+          "hint": "Automatically give the exit a portal leading back here."
         }
       },
       "NoCrossScenePermission": "You do not have permission to move Tokens between Scenes."

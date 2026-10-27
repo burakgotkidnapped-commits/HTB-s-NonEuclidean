@@ -6,19 +6,38 @@ A Foundry Virtual Tabletop v14 module for non-Euclidean geometry.
 
 | Feature | Status | How |
 | --- | --- | --- |
-| **Portals** | Traversal works; seeing through portals is planned | Region behavior **Portal** |
+| **Portals** | Seamless walking, seeing, and camera through portals | Region behavior **Portal** |
 | **Impossible spaces** | Movement cost works | Region behavior **Impossible Space** |
 | **Curved space** | Scene data helpers only | `scripts/curved-space/geometry.mjs` |
 
 ### Portals
 
-1. Draw a Region where the portal entrance should be and add the **Portal** behavior.
-2. Set **Exit** to another Region, in this Scene or another one.
-3. For a two-way doorway, give the exit Region its own Portal behavior pointing back.
+1. Put walls on both sides of two doorways, A and B.
+2. Draw a thin Region strip across doorway A and add the **Portal** behavior with **Exit** set to a
+   matching strip across doorway B. With **Two-Way** on, B gets a portal back to A automatically.
 
-A Token that walks in comes out of the exit at the same relative position (turn off
-**Preserve Offset** to come out at the center), turned by **Rotation** degrees. Arriving through
-a portal never triggers the exit portal, so paired portals don't bounce Tokens back and forth.
+Each portal's *plane* is the line through its Region's center along the longer side. Then:
+
+- **Walking:** a move that crosses A's plane continues out of B's plane as one uninterrupted movement.
+  Drag a Token to a spot you see through the portal and it walks there.
+- **Seeing:** looking into A shows a live view of what lies beyond B: lighting, fog, Tokens and all.
+  A Token's sight stops at A's plane and continues beyond B instead.
+- **Camera:** when a controlled Token crosses, the view moves with it on the same frame, so nothing on
+  screen changes.
+
+**Flip** makes the Token come out of B heading the opposite way. If A and B face different directions
+(one horizontal, one vertical), the passage turns by 90°. If B is longer or shorter than A, things are
+scaled through the portal, and the camera zooms to match.
+
+Limitations:
+
+- The camera can't rotate. A portal that turns (flip, or mixed orientations) keeps the Token
+  on screen, but the view visibly rotates.
+- Exits in another Scene or on another Level teleport the Token instead of being seamless.
+- Portal views only render while you have a Token selected (or vision Tokens as a player), so the
+  GM sees the real map when editing.
+- Only movement done through Foundry's movement system (dragging, keyboard, `TokenDocument#move`)
+  is routed through portals. Direct `update({x, y})` calls skip them.
 
 ### Impossible spaces
 
@@ -38,7 +57,13 @@ scripts/
   main.mjs                 entry point, registers everything on init
   constants.mjs            module ID, behavior type names, logging
   settings.mjs
-  portals/                 portal traversal (portal-behavior.mjs) and portal vision (vision.mjs)
+  portals/
+    portal-behavior.mjs    the Portal region behavior
+    geometry.mjs           portal planes and the transform between them
+    pathing.mjs            routes movement through portals
+    camera.mjs             moves the view with Tokens that cross
+    vision.mjs             cuts sight at portals, ghost vision beyond exits
+    renderer.mjs           draws the live view through each portal
   impossible-spaces/
   curved-space/
 lang/en.json
