@@ -178,18 +178,22 @@ export class PortalLink {
   visibleIntervals(eye, los) {
     if ( !this.side(eye) ) return [];
     if ( !los ) return [[0, 1]];
-    const steps = Math.max(2, Math.ceil((this.from.halfLength * 2) / 4));
+    const length = this.from.halfLength * 2;
+    const steps = Math.max(2, Math.ceil(length / 4));
     const intervals = [];
     let start = null;
+
+    // Test just in front of the Wall, straight off it on the viewer's side, and a little in from its
+    // ends: where a portal meets other walls, a point at the very end could land on their far side
+    const {direction} = this.from;
+    const toward = this.side(eye);
+    const ox = -direction.y * toward * 2;
+    const oy = direction.x * toward * 2;
+    const margin = Math.min(0.25, 3 / length);
     for ( let i = 0; i <= steps; i++ ) {
       const t = i / steps;
-      const p = this.pointAt(t);
-
-      // Test just in front of the Wall, toward the viewer
-      const dx = eye.x - p.x;
-      const dy = eye.y - p.y;
-      const d = Math.hypot(dx, dy) || 1;
-      const visible = los.contains(p.x + ((dx / d) * 2), p.y + ((dy / d) * 2));
+      const p = this.pointAt(Math.clamp(t, margin, 1 - margin));
+      const visible = los.contains(p.x + ox, p.y + oy);
       if ( visible && (start === null) ) start = t;
       if ( !visible && (start !== null) ) {
         intervals.push([Math.max(0, start - (0.5 / steps)), Math.min(1, t - (0.5 / steps))]);
@@ -239,9 +243,21 @@ export class PortalLink {
     const fa = along(a, far);
     const fb = along(b, far);
 
-    // Close the far side through a point straight out from the Wall, so the wedge still covers the
-    // whole far side when the viewer is right at the Wall and its edges are nearly parallel to it
-    const fm = {x: center.x + (nx * far), y: center.y + (ny * far)};
+    // Close the far side through a point along the middle of the two edges, so the wedge still covers
+    // the whole far side when the viewer is right at the Wall and its edges are nearly opposite.
+    // The middle direction always lies between the edges, wherever the viewer stands.
+    const unit = p => {
+      const d = Math.hypot(p.x - eye.x, p.y - eye.y) || 1;
+      return {x: (p.x - eye.x) / d, y: (p.y - eye.y) / d};
+    };
+    const ua = unit(a);
+    const ub = unit(b);
+    let mx = ua.x + ub.x;
+    let my = ua.y + ub.y;
+    const ml = Math.hypot(mx, my);
+    if ( ml < 1e-6 ) [mx, my] = [nx, ny];
+    else [mx, my] = [mx / ml, my / ml];
+    const fm = {x: eye.x + (mx * far * 2), y: eye.y + (my * far * 2)};
     return new PIXI.Polygon(na.x, na.y, nb.x, nb.y, fb.x, fb.y, fm.x, fm.y, fa.x, fa.y);
   }
 

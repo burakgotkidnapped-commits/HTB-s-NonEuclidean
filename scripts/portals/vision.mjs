@@ -39,6 +39,8 @@ export function patchVisionSources() {
     return config;
   };
 
+  const GhostSweep = createGhostSweep(CONFIG.Canvas.polygonBackends.sight);
+
   GhostVisionSource = class PortalGhostVisionSource extends VisionSource {
     /** Marks ghost sources so they are never treated as real Token vision. */
     isPortalGhost = true;
@@ -48,6 +50,66 @@ export function patchVisionSources() {
      * @type {PIXI.Polygon|null}
      */
     portalBoundary = null;
+
+    /**
+     * The exit Wall's plane. Walls between the ghost and it are not in the way: the Token is
+     * really looking through the entrance, so only what lies beyond the exit counts.
+     * @type {PortalPlane|null}
+     */
+    portalClip = null;
+
+    /** @override */
+    _getPolygonBackend() {
+      return GhostSweep;
+    }
+
+    /** @inheritDoc */
+    _getPolygonConfiguration() {
+      return Object.assign(super._getPolygonConfiguration(), {portalClip: this.portalClip});
+    }
+  };
+}
+
+/* ---------------------------------------- */
+
+/**
+ * A polygon backend for ghost vision that only takes walls beyond the exit plane into account.
+ * Walls on the ghost's side of the exit are dropped, and walls crossing it are trimmed to the far side.
+ * @param {typeof ClockwiseSweepPolygon} Sweep    The configured sight backend
+ * @returns {typeof ClockwiseSweepPolygon}
+ */
+function createGhostSweep(Sweep) {
+  return class PortalGhostSweep extends Sweep {
+    /** @override */
+    _identifyEdges() {
+      super._identifyEdges();
+      const plane = this.config.portalClip;
+      if ( !plane ) return;
+      const {center, direction} = plane;
+      const sideOf = p => (direction.x * (p.y - center.y)) - (direction.y * (p.x - center.x));
+      const keep = -Math.sign(sideOf(this.origin)) || 1;
+      const beyond = p => (sideOf(p) * keep) > -0.5;
+
+      for ( const edge of [...this.edges] ) {
+        if ( edge.type.endsWith("Bounds") ) continue; // The scene's bounds close off the polygon
+        const inA = beyond(edge.a);
+        const inB = beyond(edge.b);
+        if ( inA && inB ) continue;
+        this.edges.delete(edge);
+        if ( !inA && !inB ) continue;
+
+        // Trim the edge where it crosses the exit plane's line
+        const sa = sideOf(edge.a);
+        const sb = sideOf(edge.b);
+        const t = sa / (sa - sb);
+        const cut = {x: edge.a.x + ((edge.b.x - edge.a.x) * t), y: edge.a.y + ((edge.b.y - edge.a.y) * t)};
+        const trimmed = new edge.constructor(inA ? edge.a : cut, inB ? edge.b : cut, edge);
+        trimmed.intersections = Object.fromEntries(Object.entries(edge.intersections).map(([level, list]) => {
+          return [level, list.filter(({intersection: i}) => beyond(i))];
+        }));
+        this.edges.add(trimmed);
+      }
+    }
   };
 }
 
@@ -162,6 +224,7 @@ export function syncGhostVision() {
     Object.assign(ghost.blinded, source.blinded);
     ghost.portalLinkId = link.id;
     ghost.portalBoundary = boundary;
+    ghost.portalClip = link.to;
     ghost.portalSignature = signature;
     ghost.initialize(data);
   }
@@ -226,4 +289,14 @@ export function clearGhostVision() {
     overlays[key]?.destroy();
     overlays[key] = null;
   }
+}
+
+/* ---------------------------------------- */
+
+/**
+ * The current ghost vision sources, for inspection.
+ * @returns {PointVisionSource[]}
+ */
+export function getGhostVision() {
+  return [...ghosts.values()];
 }
