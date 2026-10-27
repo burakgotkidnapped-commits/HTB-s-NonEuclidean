@@ -67,17 +67,46 @@ function getPortalCuts(origin) {
   const cuts = [];
   let los;
   for ( const link of links ) {
-    if ( !link.isEntrySide(origin) ) continue;
+    if ( !link.side(origin) ) continue;
 
     // Only cut where the portal is actually in view, so walls elsewhere keep working as usual
     los ??= CONFIG.Canvas.polygonBackends.sight.create({x: origin.x, y: origin.y, elevation: origin.elevation ?? 0},
       {type: "sight", level: canvas.level});
     for ( const [t0, t1] of link.visibleIntervals(origin, los) ) {
       const wedge = link.wedge(origin, t0, t1, -seamOverlap()); // Let real sight reach a little past the portal
-      if ( wedge ) cuts.push(canvasPolygon.intersectPolygon(wedge, {clipType: ClipperLib.ClipType.ctDifference}));
+      if ( wedge ) cuts.push(subtract(canvasPolygon, wedge, origin));
     }
   }
   return cuts;
+}
+
+/**
+ * Join two overlapping polygons into one.
+ * @param {PIXI.Polygon|null} polygon
+ * @param {PIXI.Polygon} other
+ * @returns {PIXI.Polygon|null}
+ */
+function union(polygon, other) {
+  if ( !polygon ) return null;
+  const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
+  const [points] = polygon.intersectClipper(other.toClipperPoints({scalingFactor}),
+    {clipType: ClipperLib.ClipType.ctUnion, scalingFactor});
+  return points ? PIXI.Polygon.fromClipperPoints(points, {scalingFactor}) : polygon;
+}
+
+/**
+ * Cut a wedge out of a polygon, keeping the piece that contains a point.
+ * @param {PIXI.Polygon} polygon
+ * @param {PIXI.Polygon} wedge
+ * @param {Point} keep
+ * @returns {PIXI.Polygon}
+ */
+function subtract(polygon, wedge, keep) {
+  const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
+  const pieces = polygon.intersectClipper(wedge.toClipperPoints({scalingFactor}),
+    {clipType: ClipperLib.ClipType.ctDifference, scalingFactor})
+    .map(points => PIXI.Polygon.fromClipperPoints(points, {scalingFactor}));
+  return pieces.find(p => p.contains(keep.x, keep.y)) ?? pieces[0] ?? new PIXI.Polygon();
 }
 
 /* ---------------------------------------- */
@@ -97,7 +126,7 @@ export function syncGhostVision() {
         // One ghost per stretch of the portal the Token can actually see past walls
         const intervals = link.visibleIntervals(eye, eye.los);
         for ( const [i, [t0, t1]] of intervals.entries() ) {
-          const wedge = link.wedge(eye, t0, t1, seamOverlap()); // Let ghost sight start a little before the exit
+          const wedge = union(link.wedge(eye, t0, t1), link.band(seamOverlap())); // Let ghost sight cover the exit's seam
           if ( !wedge ) continue;
           const exitEye = link.apply(eye);
           const data = {

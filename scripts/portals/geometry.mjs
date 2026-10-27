@@ -223,11 +223,40 @@ export class PortalLink {
     };
     const a = this.pointAt(t0);
     const b = this.pointAt(t1);
-    const na = along(a, -inset);
-    const nb = along(b, -inset);
+
+    // The unit normal of the Wall pointing away from the viewer
+    const {center, direction} = this.from;
+    const away = this.side(eye) > 0 ? -1 : 1;
+    const nx = -direction.y * away;
+    const ny = direction.x * away;
+
+    // Move the near edge straight off the Wall, never past the viewer, which would turn the wedge
+    // inside out right at the portal
+    const distance = Math.abs((direction.x * (eye.y - center.y)) - (direction.y * (eye.x - center.x)));
+    inset = Math.min(inset, distance / 2);
+    const na = {x: a.x - (nx * inset), y: a.y - (ny * inset)};
+    const nb = {x: b.x - (nx * inset), y: b.y - (ny * inset)};
     const fa = along(a, far);
     const fb = along(b, far);
-    return new PIXI.Polygon(na.x, na.y, nb.x, nb.y, fb.x, fb.y, fa.x, fa.y);
+
+    // Close the far side through a point straight out from the Wall, so the wedge still covers the
+    // whole far side when the viewer is right at the Wall and its edges are nearly parallel to it
+    const fm = {x: center.x + (nx * far), y: center.y + (ny * far)};
+    return new PIXI.Polygon(na.x, na.y, nb.x, nb.y, fb.x, fb.y, fm.x, fm.y, fa.x, fa.y);
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * A strip along the entrance Wall, reaching a distance to either side of it.
+   * @param {number} padding
+   * @returns {PIXI.Polygon}
+   */
+  band(padding) {
+    const {a, b, direction} = this.from;
+    const nx = -direction.y * padding;
+    const ny = direction.x * padding;
+    return new PIXI.Polygon(a.x + nx, a.y + ny, b.x + nx, b.y + ny, b.x - nx, b.y - ny, a.x - nx, a.y - ny);
   }
 
   /* ---------------------------------------- */

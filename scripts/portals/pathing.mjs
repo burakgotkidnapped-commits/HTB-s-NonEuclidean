@@ -61,8 +61,10 @@ function rewriteMovement(token, options) {
     return place(scaled, link.apply(centerOf(w)));
   };
 
+  // Every waypoint gets an explicit action: core fills a missing action from the previous waypoint,
+  // which after a jump through a portal would be "displace" and teleport the Token the rest of the way
   const {x, y, elevation, width, height, shape, level} = token._source;
-  let previous = {x, y, elevation, width, height, shape, level};
+  let previous = {x, y, elevation, width, height, shape, level, action: token.movementAction};
   let original = previous;
   const passedThrough = [];
   const waypoints = [];
@@ -129,6 +131,11 @@ function rewriteMovement(token, options) {
   }
 
   if ( !crossings ) return;
-  options.movement[token.id] = {...movement, waypoints};
+  // The ruler draws the path where it really is on the map, which past a portal is somewhere else
+  options.movement[token.id] = {...movement, waypoints, showRuler: false};
+
+  // Core pans to the final destination when it is off screen, which lies beyond the portal.
+  // The camera follows the Token through the portal instead (see camera.mjs).
+  options.pan = false;
   if ( teleport ) foundry.utils.setProperty(options, `${MODULE_ID}.teleport`, teleport);
 }
