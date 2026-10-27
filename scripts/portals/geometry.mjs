@@ -178,30 +178,53 @@ export class PortalLink {
   visibleIntervals(eye, los) {
     if ( !this.side(eye) ) return [];
     if ( !los ) return [[0, 1]];
+    const {a, b, center, direction} = this.from;
     const length = this.from.halfLength * 2;
-    const steps = Math.max(2, Math.ceil(length / 4));
-    const intervals = [];
-    let start = null;
 
-    // Test just in front of the Wall, straight off it on the viewer's side, and a little in from its
-    // ends: where a portal meets other walls, a point at the very end could land on their far side
-    const {direction} = this.from;
+    // Work along a line just in front of the Wall, on the viewer's side: the line of sight may stop
+    // exactly at the Wall itself, since a Token's sight is cut at portals
     const toward = this.side(eye);
-    const ox = -direction.y * toward * 2;
-    const oy = direction.x * toward * 2;
-    const margin = Math.min(0.25, 3 / length);
-    for ( let i = 0; i <= steps; i++ ) {
-      const t = i / steps;
-      const p = this.pointAt(Math.clamp(t, margin, 1 - margin));
-      const visible = los.contains(p.x + ox, p.y + oy);
-      if ( visible && (start === null) ) start = t;
-      if ( !visible && (start !== null) ) {
-        intervals.push([Math.max(0, start - (0.5 / steps)), Math.min(1, t - (0.5 / steps))]);
-        start = null;
-      }
+    const distance = Math.abs((direction.x * (eye.y - center.y)) - (direction.y * (eye.x - center.x)));
+    const offset = Math.min(2, distance / 2);
+    const ox = -direction.y * toward * offset;
+    const oy = direction.x * toward * offset;
+    const pa = {x: a.x + ox, y: a.y + oy};
+    const pb = {x: b.x + ox, y: b.y + oy};
+
+    // Find exactly where that line enters and leaves the line of sight
+    const cuts = [0, 1];
+    const points = los.points;
+    for ( let i = 0; i < points.length; i += 2 ) {
+      const j = (i + 2) % points.length;
+      const hit = foundry.utils.lineSegmentIntersection(pa, pb,
+        {x: points[i], y: points[i + 1]}, {x: points[j], y: points[j + 1]});
+      if ( hit ) cuts.push(hit.t0);
     }
-    if ( start !== null ) intervals.push([Math.max(0, start - (0.5 / steps)), 1]);
-    return intervals;
+    cuts.sort((x, y) => x - y);
+
+    // Keep the stretches between cuts whose middle is in sight. A stretch at the very end of the
+    // Wall narrower than a pixel is where it meets other walls, not a real view
+    const intervals = [];
+    for ( let i = 0; i < cuts.length - 1; i++ ) {
+      const [t0, t1] = [cuts[i], cuts[i + 1]];
+      if ( (t1 - t0) * length < 1 ) continue;
+      const m = (t0 + t1) / 2;
+      if ( !los.contains(pa.x + ((pb.x - pa.x) * m), pa.y + ((pb.y - pa.y) * m)) ) continue;
+      const last = intervals.at(-1);
+      if ( last && ((t0 - last[1]) * length < 1) ) last[1] = t1;
+      else intervals.push([t0, t1]);
+    }
+
+    // Project the stretches from the line in front of the Wall onto the Wall, as seen from the viewer
+    const k = distance / (distance - offset);
+    const project = t => {
+      const qx = pa.x + ((pb.x - pa.x) * t);
+      const qy = pa.y + ((pb.y - pa.y) * t);
+      const px = eye.x + ((qx - eye.x) * k);
+      const py = eye.y + ((qy - eye.y) * k);
+      return Math.clamp((((px - a.x) * direction.x) + ((py - a.y) * direction.y)) / length, 0, 1);
+    };
+    return intervals.map(([t0, t1]) => [project(t0), project(t1)]);
   }
 
   /* ---------------------------------------- */
