@@ -1,4 +1,4 @@
-import {getViewedPortalLinks} from "./geometry.mjs";
+import {getViewedPortalLinks, seamOverlap} from "./geometry.mjs";
 import {getEyes} from "./eyes.mjs";
 import {log} from "../constants.mjs";
 
@@ -73,7 +73,7 @@ function getPortalCuts(origin) {
     los ??= CONFIG.Canvas.polygonBackends.sight.create({x: origin.x, y: origin.y, elevation: origin.elevation ?? 0},
       {type: "sight", level: canvas.level});
     for ( const [t0, t1] of link.visibleIntervals(origin, los) ) {
-      const wedge = link.wedge(origin, t0, t1);
+      const wedge = link.wedge(origin, t0, t1, -seamOverlap()); // Let real sight reach a little past the portal
       if ( wedge ) cuts.push(canvasPolygon.intersectPolygon(wedge, {clipType: ClipperLib.ClipType.ctDifference}));
     }
   }
@@ -97,7 +97,7 @@ export function syncGhostVision() {
         // One ghost per stretch of the portal the Token can actually see past walls
         const intervals = link.visibleIntervals(eye, eye.los);
         for ( const [i, [t0, t1]] of intervals.entries() ) {
-          const wedge = link.wedge(eye, t0, t1);
+          const wedge = link.wedge(eye, t0, t1, seamOverlap()); // Let ghost sight start a little before the exit
           if ( !wedge ) continue;
           const exitEye = link.apply(eye);
           const data = {

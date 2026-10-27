@@ -58,7 +58,7 @@ export default class PortalWindows {
       const wedges = [];
       for ( const eye of eyes ) {
         for ( const [t0, t1] of link.visibleIntervals(eye, eye.los) ) {
-          const wedge = link.wedge(eye, t0, t1);
+          const wedge = link.wedge(eye, t0, t1, 1);
           if ( wedge ) wedges.push(wedge);
         }
       }

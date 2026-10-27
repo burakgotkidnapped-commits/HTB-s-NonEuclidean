@@ -19,6 +19,15 @@ import {MODULE_ID} from "../constants.mjs";
  */
 
 /**
+ * How far, in pixels, views on either side of a portal overlap. Foundry blurs the edges of vision,
+ * so if both sides stopped exactly at the portal, a thin dark seam would show along it.
+ * @returns {number}
+ */
+export function seamOverlap() {
+  return Math.max(8, canvas.dimensions.size / 8);
+}
+
+/**
  * Build a plane from its two ends.
  * @param {Point} a
  * @param {Point} b
@@ -198,23 +207,27 @@ export class PortalLink {
    * @param {Point} eye
    * @param {number} [t0=0]    Start of the part of the Wall, as a fraction
    * @param {number} [t1=1]    End of the part of the Wall, as a fraction
+   * @param {number} [inset=0] Start this many pixels in front of the Wall, toward the viewer;
+   *                           negative to start behind it
    * @returns {PIXI.Polygon|null}
    */
-  wedge(eye, t0=0, t1=1) {
+  wedge(eye, t0=0, t1=1, inset=0) {
     if ( !this.side(eye) ) return null;
     const {width, height} = canvas.dimensions;
     const far = 2 * (width + height);
-    const a = this.pointAt(t0);
-    const b = this.pointAt(t1);
-    const extend = p => {
+    const along = (p, distance) => {
       const dx = p.x - eye.x;
       const dy = p.y - eye.y;
       const d = Math.hypot(dx, dy) || 1;
-      return {x: p.x + ((dx / d) * far), y: p.y + ((dy / d) * far)};
+      return {x: p.x + ((dx / d) * distance), y: p.y + ((dy / d) * distance)};
     };
-    const fa = extend(a);
-    const fb = extend(b);
-    return new PIXI.Polygon(a.x, a.y, b.x, b.y, fb.x, fb.y, fa.x, fa.y);
+    const a = this.pointAt(t0);
+    const b = this.pointAt(t1);
+    const na = along(a, -inset);
+    const nb = along(b, -inset);
+    const fa = along(a, far);
+    const fb = along(b, far);
+    return new PIXI.Polygon(na.x, na.y, nb.x, nb.y, fb.x, fb.y, fa.x, fa.y);
   }
 
   /* ---------------------------------------- */
