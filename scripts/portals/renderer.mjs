@@ -137,7 +137,7 @@ export default class PortalWindows {
     const rotation = stage.rotation;
     const hidden = [canvas.interface, canvas.overlay, this.container].filter(c => c.renderable);
     const moved = this.#moveTokensThrough(link);
-    const revealed = this.#revealTokensSeen(showGhostVision(link));
+    const shown = this.#showTokensSeen(showGhostVision(link), moved);
 
     try {
       const exitPivot = link.apply(pivot);
@@ -153,7 +153,7 @@ export default class PortalWindows {
       stage.rotation = rotation;
       for ( const c of hidden ) c.renderable = true;
       for ( const [mesh, state] of moved ) Object.assign(mesh, state);
-      for ( const mesh of revealed ) mesh.visible = false;
+      for ( const [mesh, visible] of shown ) mesh.visible = visible;
       hideGhostVision();
       PortalWindows.#invalidateScreenBuffers();
     }
@@ -189,22 +189,27 @@ export default class PortalWindows {
   /* ---------------------------------------- */
 
   /**
-   * Temporarily show hidden Tokens that the viewer sees through the portal.
-   * @param {PointVisionSource[]} ghosts    The ghost vision seen through the portal
-   * @returns {PIXI.DisplayObject[]}        The meshes shown, to hide again
+   * Temporarily show exactly the Tokens the viewer sees through the portal: hidden ones the ghost
+   * vision reaches appear, and ones the viewer only sees directly, from across the map, disappear.
+   * @param {PointVisionSource[]|null} ghosts    The ghost vision seen through the portal, or null if
+   *                                             Token vision is off and every Token shows
+   * @param {Map<PIXI.DisplayObject, object>} moved    Meshes moved through the portal, which stay shown
+   * @returns {Map<PIXI.DisplayObject, boolean>}       The meshes changed, with their visibility to restore
    */
-  #revealTokensSeen(ghosts) {
-    const revealed = [];
-    if ( !ghosts.length ) return revealed;
+  #showTokensSeen(ghosts, moved) {
+    const changed = new Map();
+    if ( !ghosts ) return changed;
     for ( const token of canvas.tokens.placeables ) {
       const mesh = token.mesh;
-      if ( !mesh || mesh.visible || token.document.hidden || !token.document.includedInLevel(canvas.level) ) continue;
+      if ( !mesh || moved.has(mesh) ) continue;
       const {x, y} = token.center;
-      if ( !ghosts.some(g => g.shape.contains(x, y)) ) continue;
-      mesh.visible = true;
-      revealed.push(mesh);
+      const seen = (!token.document.hidden || game.user.isGM) && token.document.includedInLevel(canvas.level)
+        && ghosts.some(g => g.shape.contains(x, y));
+      if ( seen === mesh.visible ) continue;
+      changed.set(mesh, mesh.visible);
+      mesh.visible = seen;
     }
-    return revealed;
+    return changed;
   }
 
   /* ---------------------------------------- */

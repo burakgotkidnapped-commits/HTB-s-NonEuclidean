@@ -234,32 +234,41 @@ export function syncGhostVision() {
 /* ---------------------------------------- */
 
 /**
- * Graphics that add ghost vision to Foundry's vision mask, only while a portal view is captured.
+ * Graphics that stand in for Foundry's vision mask while a portal view is captured.
  * Ghosts are never added to the active vision sources, so the real map stays exactly as the
  * Token sees it, walls and all.
  */
-const overlays = {sight: null, light: null};
+const overlays = {sight: null, light: null, realLightMask: null};
 
 /**
- * Show the ghost vision seen through one portal.
+ * Show only the ghost vision seen through one portal. The Tokens' own sight is hidden meanwhile:
+ * where it also covers the space beyond the exit, seen directly from across the map, it would
+ * otherwise show through the portal too.
  * @param {PortalLink} link
- * @returns {PointVisionSource[]}    The ghosts drawn
+ * @returns {PointVisionSource[]|null}    The ghosts drawn, or null if Token vision is off
  */
 export function showGhostVision(link) {
   const vision = canvas.visibility.vision;
-  if ( !vision ) return [];
-  if ( overlays.sight?.parent !== vision.sight ) {
+  if ( !vision || !canvas.visibility.tokenVision ) return null;
+  if ( overlays.sight?.parent !== vision ) {
     overlays.sight?.destroy();
-    overlays.sight = vision.sight.addChild(new PIXI.LegacyGraphics());
+    overlays.sight = vision.addChildAt(new PIXI.LegacyGraphics(), vision.getChildIndex(vision.darkness));
     overlays.sight.blendMode = PIXI.BLEND_MODES.MAX_COLOR;
   }
-  if ( overlays.light?.parent !== vision.light.mask ) {
+  if ( overlays.light?.parent !== vision.light ) {
     overlays.light?.destroy();
-    overlays.light = vision.light.mask.addChild(new PIXI.LegacyGraphics());
+    overlays.light = vision.light.addChild(new PIXI.LegacyGraphics());
   }
   const shown = [];
   overlays.sight.clear().beginFill(0xFF0000);
   overlays.light.clear().beginFill(0xFF0000);
+
+  // Lights that grant vision are seen wherever they shine, portal or not
+  for ( const light of canvas.effects.lightSources ) {
+    if ( !light.hasActiveLayer || !light.data.vision || light.isPreview ) continue;
+    if ( light instanceof foundry.canvas.sources.GlobalLightSource ) continue;
+    overlays.light.drawShape(light.shape);
+  }
   for ( const ghost of ghosts.values() ) {
     if ( (ghost.portalLinkId !== link.id) || !ghost.shape || ghost.isBlinded ) continue;
     if ( ghost.radius > 0 ) overlays.sight.drawShape(ghost.shape);
@@ -268,13 +277,27 @@ export function showGhostVision(link) {
   }
   overlays.sight.endFill();
   overlays.light.endFill();
-  overlays.sight.renderable = overlays.light.renderable = true;
+
+  overlays.sight.renderable = true;
+  vision.sight.renderable = false;
+  const realLightMask = overlays.realLightMask = vision.light.mask;
+  vision.light.mask = overlays.light;
+  realLightMask.renderable = false; // No longer a mask, so it would draw as a plain shape
+
+  // Foundry reaches these through the mask while rendering
+  for ( const key of ["preview", "shared", "surfaceExposure"] ) overlays.light[key] = realLightMask[key];
   canvas.masks.vision.renderDirty = true;
   return shown;
 }
 
-/** Hide ghost vision again, after a portal view is captured. */
+/** Put the Tokens' own vision back, after a portal view is captured. */
 export function hideGhostVision() {
+  const vision = canvas.visibility.vision;
+  if ( overlays.realLightMask ) {
+    if ( vision?.light && !vision.light.destroyed ) vision.light.mask = overlays.realLightMask;
+    overlays.realLightMask = null;
+  }
+  if ( vision?.sight && !vision.sight.destroyed ) vision.sight.renderable = true;
   if ( overlays.sight ) overlays.sight.renderable = false;
   if ( overlays.light ) overlays.light.renderable = false;
   canvas.masks.vision.renderDirty = true;
