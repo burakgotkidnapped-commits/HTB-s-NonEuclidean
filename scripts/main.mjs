@@ -10,8 +10,6 @@ Hooks.once("init", () => {
 
   // Region behaviors
   Object.assign(CONFIG.RegionBehavior.dataModels, {
-    [BEHAVIOR_TYPES.portal]: portals.PortalRegionBehaviorType,
-    [BEHAVIOR_TYPES.fold]: portals.FoldRegionBehaviorType,
     [BEHAVIOR_TYPES.impossibleSpace]: ImpossibleSpaceRegionBehaviorType
   });
   Object.assign(CONFIG.RegionBehavior.typeIcons, BEHAVIOR_ICONS);

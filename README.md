@@ -6,48 +6,48 @@ A Foundry Virtual Tabletop v14 module for non-Euclidean geometry.
 
 | Feature | Status | How |
 | --- | --- | --- |
-| **Portals** | Seamless walking, seeing, and camera through portals | Region behavior **Portal** |
-| **Folds** | A Region cut out of space: long outside, short inside | Region behavior **Fold** |
+| **Portals** | Walls you can see and walk through to somewhere else, seamlessly | Wall config, **Portal** section |
 | **Impossible spaces** | Movement cost works | Region behavior **Impossible Space** |
 | **Curved space** | Scene data helpers only | `scripts/curved-space/geometry.mjs` |
 
-### Folds: long on the outside, short on the inside
-
-The simplest example, a hallway:
-
-1. Draw a hallway 10 squares long with walls along both sides.
-2. Draw a Region over its middle 8 squares and add the **Fold** behavior.
-3. Select a Token with vision and look down the hallway: the far end is right there, 2 squares away.
-   Walk in, and after 2 squares you come out at the far end.
-
-From outside, the hallway still looks 10 squares long on the map. A fold joins its Region's two
-opposite edges and removes everything between them. **Shortened Direction** picks which pair of edges;
-Automatic uses the longer side.
-
 ### Portals
 
-1. Put walls on both sides of two doorways, A and B.
-2. Draw a Region strip across doorway A and add the **Portal** behavior with **Exit** set to a
-   matching strip across doorway B. Set **Crossing Direction** to the way Tokens walk through. With **Two-Way** on, B gets a portal back to A automatically.
+Any wall can be a portal. Open the wall's config, and in the **Portal** section set the **Exit Wall**:
+click the crosshair button, then click the exit wall on the map. With **Two-Way** on, the exit wall
+becomes a portal leading back. Portal walls never block sight or movement themselves.
 
-Each portal's *plane* is the line through its Region's center, across the crossing direction. Then:
-
-- **Walking:** a move that crosses A's plane continues out of B's plane as one uninterrupted movement.
-  Drag a Token to a spot you see through the portal and it walks there.
-- **Seeing:** looking into A shows a live view of what lies beyond B: lighting, fog, Tokens and all.
-  A Token's sight stops at A's plane and continues beyond B instead.
+- **Walking:** a move that crosses the portal wall continues out of the exit wall as one uninterrupted
+  movement. Drag a Token to a spot you see through the portal and it walks there.
+- **Seeing:** looking at the portal shows a live view of what lies beyond the exit: lighting, fog,
+  Tokens and all. A Token's sight stops at the portal and continues beyond the exit instead.
 - **Camera:** when a controlled Token crosses, the view moves with it on the same frame, so nothing on
   screen changes.
 
-**Flip** makes the Token come out of B heading the opposite way. If A and B face different directions
-(one horizontal, one vertical), the passage turns by 90°. If B is longer or shorter than A, things are
+Walking straight through comes out heading the same way; **Flip** reverses that. If the exit wall
+runs at an angle to the portal, the passage turns to match. If it is longer or shorter, things are
 scaled through the portal, and the camera zooms to match.
 
-Limitations:
+#### Example: a hallway that is long outside, short inside
 
-- The camera can't rotate. A portal that turns (flip, or mixed orientations) keeps the Token
+1. Draw a hallway 10 squares long with walls along both sides.
+2. Draw a wall across the hallway 1 square in, and another 1 square from the far end.
+3. Make the first a portal with the second as its exit (Two-Way on).
+4. Select a Token with vision and look down the hallway: the far end is right there, 2 squares away.
+   Walk in, and after 2 squares you come out at the far end.
+
+From outside, the hallway still looks 10 squares long on the map.
+
+#### Another Scene
+
+Paste the UUID of a wall in another Scene as the exit (right-click the wall's config header to copy
+it). The Token walks up to the portal, then moves to the other Scene with the view kept on it. This one
+is a teleport, not seamless.
+
+#### Limitations
+
+- The camera can't rotate. A portal that turns (flip, or walls at an angle) keeps the Token
   on screen, but the view visibly rotates.
-- Exits in another Scene or on another Level teleport the Token instead of being seamless.
+- Exits on another Level of the same Scene move the Token there, but views through them aren't drawn.
 - Portal views only render while you have a Token selected (or vision Tokens as a player), so the
   GM sees the real map when editing.
 - Only movement done through Foundry's movement system (dragging, keyboard, `TokenDocument#move`)
@@ -72,10 +72,10 @@ scripts/
   constants.mjs            module ID, behavior type names, logging
   settings.mjs
   portals/
-    portal-behavior.mjs    the Portal region behavior
-    fold-behavior.mjs      the Fold region behavior
+    walls.mjs              Portal section of the wall config, exit picking, two-way links
+    teleport.mjs           portals into other Scenes
     eyes.mjs               where the viewer looks from
-    geometry.mjs           portal planes and the transform between them
+    geometry.mjs           portal walls and the transform between them
     pathing.mjs            routes movement through portals
     camera.mjs             moves the view with Tokens that cross
     vision.mjs             cuts sight at portals, ghost vision beyond exits

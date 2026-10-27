@@ -26,6 +26,7 @@ export default class PortalWindows {
   draw() {
     this.container = new PIXI.Container();
     this.container.eventMode = "none";
+    this.container.sortableChildren = true;
     canvas.rendered.addChildAt(this.container, canvas.rendered.getChildIndex(canvas.interface));
   }
 
@@ -63,6 +64,10 @@ export default class PortalWindows {
       if ( !wedges.length ) continue;
       active.add(link.id);
       const w = this.#getWindow(link.id);
+
+      // Nearer portals draw over farther ones
+      const distance = Math.min(...eyes.map(e => Math.hypot(e.x - link.from.center.x, e.y - link.from.center.y)));
+      w.sprite.zIndex = w.mask.zIndex = -distance;
       w.mask.clear().beginFill(0xFFFFFF);
       for ( const wedge of wedges ) w.mask.drawShape(wedge);
       w.mask.endFill();

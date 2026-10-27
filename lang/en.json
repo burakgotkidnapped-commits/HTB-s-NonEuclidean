@@ -2,8 +2,6 @@
   "TYPES": {
     "RegionBehavior": {
       "noneuclid": {
-        "portal": "Portal",
-        "fold": "Fold",
         "impossibleSpace": "Impossible Space"
       }
     }
@@ -11,8 +9,6 @@
   "HINTS": {
     "RegionBehavior": {
       "noneuclid": {
-        "portal": "A doorway to another place. Walking across the Region's center line continues the walk out of the exit Region, and looking through it shows the space beyond the exit. Draw it as a strip across a doorway with walls on both sides.",
-        "fold": "Cuts the Region out of space and joins its opposite edges. A long hallway with a fold over its middle looks long from outside but is short to walk, and looking down it shows the far end up close.",
         "impossibleSpace": "The Region is bigger or smaller on the inside: movement through it costs more or less than its drawn size."
       }
     }
@@ -23,27 +19,6 @@
         "name": "Debug Logging",
         "hint": "Log extra details about portals and other non-Euclidean effects to the browser console."
       }
-    },
-    "Portal": {
-      "FIELDS": {
-        "exit": {
-          "label": "Exit",
-          "hint": "The Region the portal leads to. In the same Scene the passage is seamless; in another Scene the Token is teleported."
-        },
-        "crossing": {
-          "label": "Crossing Direction",
-          "hint": "The direction Tokens walk through the portal and its exit. Automatic assumes each Region is a strip drawn across a doorway, so they walk across its short side."
-        },
-        "flip": {
-          "label": "Flip",
-          "hint": "Come out of the exit heading the opposite way."
-        },
-        "twoWay": {
-          "label": "Two-Way",
-          "hint": "Automatically give the exit a portal leading back here."
-        }
-      },
-      "NoCrossScenePermission": "You do not have permission to move Tokens between Scenes."
     },
     "ImpossibleSpace": {
       "FIELDS": {
@@ -60,18 +35,20 @@
         "spherical": "Spherical"
       }
     },
-    "Crossing": {
-      "auto": "Automatic",
-      "northSouth": "North-South",
-      "eastWest": "East-West"
-    },
-    "Fold": {
-      "FIELDS": {
-        "direction": {
-          "label": "Shortened Direction",
-          "hint": "The direction of travel the fold removes. Automatic uses the Region's longer side, as for a Region drawn along a hallway."
-        }
-      }
+    "WallPortal": {
+      "Legend": "Portal",
+      "Hint": "Turn this wall into a portal. Walking across it continues the walk out of the exit wall, and looking at it shows what lies beyond the exit. Portal walls never block sight or movement themselves.",
+      "Exit": "Exit Wall",
+      "ExitHint": "Pick the wall on the map, or paste a wall's UUID to lead to another Scene. Leave empty to make this an ordinary wall again.",
+      "NoExit": "Not a portal",
+      "Pick": "Pick the exit wall on the map",
+      "PickPrompt": "Click the exit wall. Press Escape or right-click to cancel.",
+      "PickMissed": "No wall there. Click closer to a wall, or press Escape to cancel.",
+      "Flip": "Flip",
+      "FlipHint": "Come out of the exit heading the opposite way.",
+      "TwoWay": "Two-Way",
+      "TwoWayHint": "Make the exit wall a portal leading back here.",
+      "NoCrossScenePermission": "You do not have permission to move Tokens between Scenes."
     }
   }
 }

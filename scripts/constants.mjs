@@ -6,15 +6,11 @@ export const MODULE_ID = "noneuclid";
  * Foundry prefixes module-provided sub-types with the module ID.
  */
 export const BEHAVIOR_TYPES = Object.freeze({
-  portal: `${MODULE_ID}.portal`,
-  fold: `${MODULE_ID}.fold`,
   impossibleSpace: `${MODULE_ID}.impossibleSpace`
 });
 
 /** Font Awesome icons shown for each behavior type in the Region config. */
 export const BEHAVIOR_ICONS = Object.freeze({
-  [BEHAVIOR_TYPES.portal]: "fa-solid fa-dungeon",
-  [BEHAVIOR_TYPES.fold]: "fa-solid fa-arrows-left-right-to-line",
   [BEHAVIOR_TYPES.impossibleSpace]: "fa-solid fa-cube"
 });
 

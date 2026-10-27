@@ -102,7 +102,9 @@ export function syncGhostVision() {
             lightRadius: source.data.lightRadius * link.scale,
             externalRadius: source.data.externalRadius * link.scale
           };
-          wanted.set(`${source.sourceId}.noneuclid.${link.id}.${i}`, {source, data, boundary: link.applyPolygon(wedge)});
+          const boundary = link.applyPolygon(wedge);
+          boundary._includeEdge = (a, b) => !link.isExitEdge(a, b); // See past the exit Wall even if it blocks
+          wanted.set(`${source.sourceId}.noneuclid.${link.id}.${i}`, {source, data, boundary});
         }
       }
     }

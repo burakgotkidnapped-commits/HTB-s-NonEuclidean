@@ -1,12 +1,12 @@
 import {invalidatePortalLinks} from "./geometry.mjs";
 import {registerPathing} from "./pathing.mjs";
+import {registerTeleports} from "./teleport.mjs";
+import {registerWallPortals} from "./walls.mjs";
 import {followPortalJumps, resetCamera} from "./camera.mjs";
 import {patchVisionSources, syncGhostVision, clearGhostVision} from "./vision.mjs";
 import PortalWindows from "./renderer.mjs";
 
-export {default as PortalRegionBehaviorType} from "./portal-behavior.mjs";
-export {default as FoldRegionBehaviorType} from "./fold-behavior.mjs";
-export {PortalLink, getPortalLinks} from "./geometry.mjs";
+export {PortalLink, getPortalLinks, getPortalFlags} from "./geometry.mjs";
 
 const windows = new PortalWindows();
 
@@ -27,6 +27,8 @@ function beforeRender() {
 /** Called during the init hook. */
 export function init() {
   registerPathing();
+  registerTeleports();
+  registerWallPortals();
 
   Hooks.once("setup", patchVisionSources);
 
@@ -46,14 +48,11 @@ export function init() {
     invalidatePortalLinks();
   });
 
-  // Rebuild links and vision whenever portals or their Regions change
-  const onChange = document => {
-    const scene = document instanceof foundry.documents.RegionBehavior ? document.parent?.parent : document.parent;
-    if ( scene !== canvas.scene ) return;
+  // Rebuild links and vision whenever Walls change: a portal, or the exit of one, may have moved.
+  // Exits can be in other Scenes, so changes anywhere count.
+  const onChange = () => {
     invalidatePortalLinks();
     if ( canvas.ready ) canvas.perception.update({initializeVision: true});
   };
-  for ( const name of ["Region", "RegionBehavior"] ) {
-    for ( const action of ["create", "update", "delete"] ) Hooks.on(`${action}${name}`, onChange);
-  }
+  for ( const action of ["create", "update", "delete"] ) Hooks.on(`${action}Wall`, onChange);
 }
