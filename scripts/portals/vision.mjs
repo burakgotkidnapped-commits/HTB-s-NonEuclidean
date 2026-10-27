@@ -8,8 +8,8 @@ import {log} from "../constants.mjs";
  * - A Token's own sight stops at a portal plane: the real space behind the portal is cut out
  *   of its vision polygon, so it is neither revealed nor explored.
  * - In its place the Token gets a "ghost" vision source at the matching point beyond the exit,
- *   limited to the wedge it can see through the portal. That reveals the space on the other side,
- *   which the portal window then draws.
+ *   limited to the wedge it can see through the portal. Ghosts only count while that portal's
+ *   window is being drawn, so the space beyond the exit shows inside the portal and nowhere else.
  */
 
 /** @type {Map<string, PointVisionSource>} */
@@ -84,7 +84,7 @@ function getPortalCuts(origin) {
 
 /**
  * Create, move, or remove ghost vision sources to match the real ones.
- * Called once per frame, before perception updates are applied.
+ * Called once per frame. Ghosts only compute their shapes here; see {@link showGhostVision}.
  */
 export function syncGhostVision() {
   const wanted = new Map();
@@ -111,39 +111,80 @@ export function syncGhostVision() {
           };
           const boundary = link.applyPolygon(wedge);
           boundary._includeEdge = (a, b) => !link.isExitEdge(a, b); // See past the exit Wall even if it blocks
-          wanted.set(`${source.sourceId}.noneuclid.${link.id}.${i}`, {source, data, boundary});
+          const signature = JSON.stringify([data.x, data.y, data.rotation, data.radius, data.lightRadius,
+            data.externalRadius, data.angle, data.visionMode, data.disabled, data.level, source.blinded, t0, t1]);
+          wanted.set(`${source.sourceId}.noneuclid.${link.id}.${i}`, {source, link, data, boundary, signature});
         }
       }
     }
   }
 
-  let changed = false;
-  let added = false;
   for ( const [key, ghost] of ghosts ) {
     if ( wanted.has(key) ) continue;
     ghost.destroy();
     ghosts.delete(key);
-    changed = added = true;
   }
-  for ( const [key, {source, data, boundary}] of wanted ) {
+  for ( const [key, {source, link, data, boundary, signature}] of wanted ) {
     let ghost = ghosts.get(key);
-    const signature = JSON.stringify([data.x, data.y, data.rotation, data.radius, data.lightRadius,
-      data.externalRadius, data.angle, data.visionMode, data.disabled, data.level, source.blinded]);
     if ( ghost?.portalSignature === signature ) continue;
-    if ( !ghost ) {
-      ghost = new GhostVisionSource({sourceId: key, object: source.object});
-      ghosts.set(key, ghost);
-      added = true;
-    }
+    ghost?.destroy();
+    ghost = new GhostVisionSource({sourceId: key, object: source.object});
+    ghosts.set(key, ghost);
     Object.assign(ghost.blinded, source.blinded);
+    ghost.portalLinkId = link.id;
     ghost.portalBoundary = boundary;
     ghost.portalSignature = signature;
     ghost.initialize(data);
-    ghost.add();
-    changed = true;
   }
+}
 
-  if ( changed ) canvas.perception.update({initializeVisionModes: added, refreshVision: true, refreshLighting: true});
+/* ---------------------------------------- */
+
+/**
+ * Graphics that add ghost vision to Foundry's vision mask, only while a portal view is captured.
+ * Ghosts are never added to the active vision sources, so the real map stays exactly as the
+ * Token sees it, walls and all.
+ */
+const overlays = {sight: null, light: null};
+
+/**
+ * Show the ghost vision seen through one portal.
+ * @param {PortalLink} link
+ * @returns {PointVisionSource[]}    The ghosts drawn
+ */
+export function showGhostVision(link) {
+  const vision = canvas.visibility.vision;
+  if ( !vision ) return [];
+  if ( overlays.sight?.parent !== vision.sight ) {
+    overlays.sight?.destroy();
+    overlays.sight = vision.sight.addChild(new PIXI.LegacyGraphics());
+    overlays.sight.blendMode = PIXI.BLEND_MODES.MAX_COLOR;
+  }
+  if ( overlays.light?.parent !== vision.light.mask ) {
+    overlays.light?.destroy();
+    overlays.light = vision.light.mask.addChild(new PIXI.LegacyGraphics());
+  }
+  const shown = [];
+  overlays.sight.clear().beginFill(0xFF0000);
+  overlays.light.clear().beginFill(0xFF0000);
+  for ( const ghost of ghosts.values() ) {
+    if ( (ghost.portalLinkId !== link.id) || !ghost.shape || ghost.isBlinded ) continue;
+    if ( ghost.radius > 0 ) overlays.sight.drawShape(ghost.shape);
+    if ( ghost.lightRadius > 0 ) overlays.light.drawShape(ghost.light);
+    shown.push(ghost);
+  }
+  overlays.sight.endFill();
+  overlays.light.endFill();
+  overlays.sight.renderable = overlays.light.renderable = true;
+  canvas.masks.vision.renderDirty = true;
+  return shown;
+}
+
+/** Hide ghost vision again, after a portal view is captured. */
+export function hideGhostVision() {
+  if ( overlays.sight ) overlays.sight.renderable = false;
+  if ( overlays.light ) overlays.light.renderable = false;
+  canvas.masks.vision.renderDirty = true;
 }
 
 /* ---------------------------------------- */
@@ -152,4 +193,8 @@ export function syncGhostVision() {
 export function clearGhostVision() {
   for ( const ghost of ghosts.values() ) ghost.destroy();
   ghosts.clear();
+  for ( const key of ["sight", "light"] ) {
+    overlays[key]?.destroy();
+    overlays[key] = null;
+  }
 }

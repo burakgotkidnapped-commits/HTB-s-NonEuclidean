@@ -1,5 +1,6 @@
 import {getViewedPortalLinks} from "./geometry.mjs";
 import {getEyes} from "./eyes.mjs";
+import {showGhostVision, hideGhostVision} from "./vision.mjs";
 
 /**
  * Portal windows: a live picture of the far side of each portal, drawn over the space beyond it.
@@ -136,6 +137,7 @@ export default class PortalWindows {
     const rotation = stage.rotation;
     const hidden = [canvas.interface, canvas.overlay, this.container].filter(c => c.renderable);
     const moved = this.#moveTokensThrough(link);
+    const revealed = this.#revealTokensSeen(showGhostVision(link));
 
     try {
       const exitPivot = link.apply(pivot);
@@ -151,6 +153,8 @@ export default class PortalWindows {
       stage.rotation = rotation;
       for ( const c of hidden ) c.renderable = true;
       for ( const [mesh, state] of moved ) Object.assign(mesh, state);
+      for ( const mesh of revealed ) mesh.visible = false;
+      hideGhostVision();
       PortalWindows.#invalidateScreenBuffers();
     }
   }
@@ -180,6 +184,27 @@ export default class PortalWindows {
       mesh.scale = new PIXI.Point(mesh.scale.x * link.scale, mesh.scale.y * link.scale);
     }
     return moved;
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * Temporarily show hidden Tokens that the viewer sees through the portal.
+   * @param {PointVisionSource[]} ghosts    The ghost vision seen through the portal
+   * @returns {PIXI.DisplayObject[]}        The meshes shown, to hide again
+   */
+  #revealTokensSeen(ghosts) {
+    const revealed = [];
+    if ( !ghosts.length ) return revealed;
+    for ( const token of canvas.tokens.placeables ) {
+      const mesh = token.mesh;
+      if ( !mesh || mesh.visible || token.document.hidden || !token.document.includedInLevel(canvas.level) ) continue;
+      const {x, y} = token.center;
+      if ( !ghosts.some(g => g.shape.contains(x, y)) ) continue;
+      mesh.visible = true;
+      revealed.push(mesh);
+    }
+    return revealed;
   }
 
   /* ---------------------------------------- */
