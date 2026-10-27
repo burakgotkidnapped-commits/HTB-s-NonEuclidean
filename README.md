@@ -39,8 +39,8 @@ From outside, the hallway still looks 10 squares long on the map.
 
 #### Another Scene
 
-Paste the UUID of a wall in another Scene as the exit (right-click the wall's config header to copy
-it). The Token walks up to the portal, then moves to the other Scene with the view kept on it. This one
+Paste the UUID of a wall in another Scene as the exit (for example from
+`canvas.walls.controlled[0].document.uuid` in the console there). The Token walks up to the portal, then moves to the other Scene with the view kept on it. This one
 is a teleport, not seamless.
 
 #### Limitations
