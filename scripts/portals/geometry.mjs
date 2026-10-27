@@ -64,6 +64,84 @@ export function getPortalFlags(wall) {
   return {exit: flags.exit, flip: !!flags.flip, twoWay: flags.twoWay ?? true};
 }
 
+/**
+ * Which side of a plane's line a point is on, as a signed distance.
+ * @param {PortalPlane} plane
+ * @param {Point} point
+ * @returns {number}
+ */
+export function planeSide({center, direction}, {x, y}) {
+  return (direction.x * (y - center.y)) - (direction.y * (x - center.x));
+}
+
+/* ---------------------------------------- */
+
+/**
+ * A similarity transform: rotation, uniform scale, and translation. Treating points as complex
+ * numbers, it maps z to m·z + t, where m = cos + i·sin with the scale folded in.
+ */
+export class Similarity {
+  constructor(cos=1, sin=0, x=0, y=0) {
+    this.cos = cos;
+    this.sin = sin;
+    this.x = x;
+    this.y = y;
+  }
+
+  /** The transform that leaves everything in place. */
+  static IDENTITY = new Similarity();
+
+  /** Uniform scale applied. */
+  get scale() {
+    return Math.hypot(this.cos, this.sin);
+  }
+
+  /** Rotation in radians applied. */
+  get angle() {
+    return Math.atan2(this.sin, this.cos);
+  }
+
+  /**
+   * @param {Point} point
+   * @returns {Point}
+   */
+  apply({x, y}) {
+    return {x: this.x + (this.cos * x) - (this.sin * y), y: this.y + (this.sin * x) + (this.cos * y)};
+  }
+
+  /**
+   * @param {PIXI.Polygon} polygon
+   * @returns {PIXI.Polygon}
+   */
+  applyPolygon(polygon) {
+    const points = [];
+    for ( let i = 0; i < polygon.points.length; i += 2 ) {
+      const p = this.apply({x: polygon.points[i], y: polygon.points[i + 1]});
+      points.push(p.x, p.y);
+    }
+    return new PIXI.Polygon(points);
+  }
+
+  /**
+   * This transform followed by another.
+   * @param {Similarity} other
+   * @returns {Similarity}
+   */
+  then(other) {
+    const t = other.apply(this);
+    return new Similarity((other.cos * this.cos) - (other.sin * this.sin),
+      (other.sin * this.cos) + (other.cos * this.sin), t.x, t.y);
+  }
+
+  /** @returns {Similarity} */
+  invert() {
+    const d = (this.cos * this.cos) + (this.sin * this.sin);
+    const cos = this.cos / d;
+    const sin = -this.sin / d;
+    return new Similarity(cos, sin, -((cos * this.x) - (sin * this.y)), -((sin * this.x) + (cos * this.y)));
+  }
+}
+
 /* ---------------------------------------- */
 
 /**
@@ -103,12 +181,13 @@ export class PortalLink {
     /** Uniform scale applied by the link. */
     this.scale = to.halfLength / this.from.halfLength;
 
-    this.#cos = Math.cos(this.angle) * this.scale;
-    this.#sin = Math.sin(this.angle) * this.scale;
+    /** The transform from the entrance side to the exit side. */
+    const cos = Math.cos(this.angle) * this.scale;
+    const sin = Math.sin(this.angle) * this.scale;
+    const {x, y} = this.from.center;
+    this.transform = new Similarity(cos, sin, to.center.x - ((cos * x) - (sin * y)),
+      to.center.y - ((sin * x) + (cos * y)));
   }
-
-  #cos;
-  #sin;
 
   /* ---------------------------------------- */
 
@@ -117,13 +196,8 @@ export class PortalLink {
    * @param {Point} point
    * @returns {Point}
    */
-  apply({x, y}) {
-    const dx = x - this.from.center.x;
-    const dy = y - this.from.center.y;
-    return {
-      x: this.to.center.x + (this.#cos * dx) - (this.#sin * dy),
-      y: this.to.center.y + (this.#sin * dx) + (this.#cos * dy)
-    };
+  apply(point) {
+    return this.transform.apply(point);
   }
 
   /* ---------------------------------------- */
@@ -313,12 +387,7 @@ export class PortalLink {
    * @returns {PIXI.Polygon}
    */
   applyPolygon(polygon) {
-    const points = [];
-    for ( let i = 0; i < polygon.points.length; i += 2 ) {
-      const p = this.apply({x: polygon.points[i], y: polygon.points[i + 1]});
-      points.push(p.x, p.y);
-    }
-    return new PIXI.Polygon(points);
+    return this.transform.applyPolygon(polygon);
   }
 
   /* ---------------------------------------- */

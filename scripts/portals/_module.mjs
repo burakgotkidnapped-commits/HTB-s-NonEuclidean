@@ -33,17 +33,17 @@ function runStep(name, step) {
   }
 }
 
-/**
- * Before perception updates: move the camera with Tokens that jumped through a portal,
- * then line up ghost vision with the Tokens' real vision.
- */
+/** Before perception updates: move the camera with Tokens that jumped through a portal. */
 function beforePerception() {
   runStep("camera", followPortalJumps);
-  runStep("vision", syncGhostVision);
 }
 
-/** After animations, just before the frame is rendered: capture the portal windows. */
+/**
+ * After animations and perception, just before the frame is rendered: find what each viewer sees
+ * through portals, line up ghost vision with it, and capture the portal windows.
+ */
 function beforeRender() {
+  runStep("vision", syncGhostVision);
   runStep("windows", () => windows.render());
 }
 
@@ -54,7 +54,6 @@ export function init() {
   registerWallPortals();
 
   Hooks.once("setup", patchVisionSources);
-
   Hooks.on("canvasReady", () => {
     const p = PIXI.UPDATE_PRIORITY;
     failed.clear();

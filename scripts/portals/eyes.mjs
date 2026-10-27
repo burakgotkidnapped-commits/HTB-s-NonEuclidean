@@ -4,6 +4,7 @@
  * @property {string} id                 A stable ID for the viewer
  * @property {number} x
  * @property {number} y
+ * @property {number} [elevation]
  * @property {PIXI.Polygon|null} los     What the viewer can see past walls, or null if unlimited
  * @property {PointVisionSource} [source]  The vision source, if the viewer is one
  */
@@ -17,11 +18,13 @@ export function getEyes() {
   if ( canvas.visibility.tokenVision ) {
     return canvas.effects.visionSources
       .filter(s => !s.isPortalGhost && s.active && !s.data.preview)
-      .map(source => ({id: source.sourceId, x: source.data.x, y: source.data.y, los: source.los, source}));
+      .map(source => ({id: source.sourceId, x: source.data.x, y: source.data.y, elevation: source.data.elevation,
+        los: source.los, source}));
   }
   return canvas.tokens.controlled.map(token => {
     const {x, y} = token.center;
-    return {id: token.sourceId, x, y, los: computeSight({x, y, elevation: token.document.elevation})};
+    const elevation = token.document.elevation;
+    return {id: token.sourceId, x, y, elevation, los: computeSight({x, y, elevation})};
   });
 }
 

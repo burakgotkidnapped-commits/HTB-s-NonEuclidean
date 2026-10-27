@@ -20,6 +20,11 @@ becomes a portal leading back. Portal walls never block sight or movement themse
   movement. Drag a Token to a spot you see through the portal and it walks there.
 - **Seeing:** looking at the portal shows a live view of what lies beyond the exit: lighting, fog,
   Tokens and all. A Token's sight stops at the portal and continues beyond the exit instead.
+  Portals seen through a portal show their own view too, so a room whose walls lead back into
+  itself repeats, with your Token in every copy. **Portal View Depth** in the module settings sets
+  how many portals deep the scene is drawn in full (default 4); each level draws the scene again.
+  Past that, loops carry on to the edge of the screen with copies of the levels already drawn,
+  which cost almost nothing.
 - **Camera:** when a controlled Token crosses, the view moves with it on the same frame, so nothing on
   screen changes.
 
@@ -47,11 +52,16 @@ is a teleport, not seamless.
 
 - The camera can't rotate. A portal that turns (flip, or walls at an angle) keeps the Token
   on screen, but the view visibly rotates.
+- At most 16 portal views are drawn in full and 64 copied at once. Past that, and past the view
+  depth outside loops, portals show nothing beyond them.
+- Copies past the view depth show what the deepest drawn level sees. A Token's sight range is not
+  counted again for each copy, so a limited sight range doesn't fade out the far copies.
 - Exits on another Level of the same Scene move the Token there, but views through them aren't drawn.
 - Portal views only render while you have a Token selected (or vision Tokens as a player), so the
   GM sees the real map when editing.
-- Only movement done through Foundry's movement system (dragging, keyboard, `TokenDocument#move`)
-  is routed through portals. Direct `update({x, y})` calls skip them.
+- All movement is routed through portals, including direct `update({x, y})` calls, which Foundry
+  treats as movement. To place a Token without passing through portals, move it with the
+  `displace` action: `token.move([{x, y, action: "displace"}])`.
 
 ### Impossible spaces
 

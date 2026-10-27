@@ -10,4 +10,13 @@ export function registerSettings() {
     type: Boolean,
     default: false
   });
+
+  game.settings.register(MODULE_ID, "portalDepth", {
+    name: "NONEUCLID.Settings.portalDepth.name",
+    hint: "NONEUCLID.Settings.portalDepth.hint",
+    scope: "client",
+    config: true,
+    type: new foundry.data.fields.NumberField({required: true, nullable: false, integer: true, min: 1, max: 8,
+      step: 1, initial: 4})
+  });
 }

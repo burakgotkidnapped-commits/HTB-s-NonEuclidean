@@ -18,6 +18,10 @@
       "debug": {
         "name": "Debug Logging",
         "hint": "Log extra details about portals and other non-Euclidean effects to the browser console."
+      },
+      "portalDepth": {
+        "name": "Portal View Depth",
+        "hint": "How many portals deep the scene is drawn in full when a portal shows another portal. Each level draws the scene again, so lower this if the canvas gets slow. Past it, loops such as a room whose walls lead back into itself go on with cheap copies of the deepest levels, out to the edge of the screen. At 1, loops don't repeat."
       }
     },
     "ImpossibleSpace": {

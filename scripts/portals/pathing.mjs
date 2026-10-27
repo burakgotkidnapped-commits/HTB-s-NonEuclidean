@@ -1,4 +1,5 @@
 import {getPortalLinks} from "./geometry.mjs";
+import {isOnlySeenThroughPortals} from "./camera.mjs";
 import {MODULE_ID, log} from "../constants.mjs";
 
 /**
@@ -130,12 +131,16 @@ function rewriteMovement(token, options) {
     previous = current;
   }
 
-  if ( !crossings ) return;
+  if ( !crossings ) {
+    // Seen through a portal, the Token is on screen already: don't pan to where it really is
+    if ( (token.parent === canvas.scene) && isOnlySeenThroughPortals(centerOf(previous)) ) options.pan = false;
+    return;
+  }
   // The ruler draws the path where it really is on the map, which past a portal is somewhere else
   options.movement[token.id] = {...movement, waypoints, showRuler: false};
 
   // Core pans to the final destination when it is off screen, which lies beyond the portal.
-  // The camera follows the Token through the portal instead (see camera.mjs).
+  // The camera follows the Token through the portal instead, without panning (see camera.mjs).
   options.pan = false;
   if ( teleport ) foundry.utils.setProperty(options, `${MODULE_ID}.teleport`, teleport);
 }
