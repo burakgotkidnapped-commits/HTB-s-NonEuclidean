@@ -1,5 +1,5 @@
 import {MODULE_ID} from "../constants.mjs";
-import {getPortalFlags} from "./geometry.mjs";
+import {getPortalFlags, isPortalDoor} from "./geometry.mjs";
 
 /**
  * Portal Walls: the Portal section of the Wall config, the pick-on-canvas tool for choosing an
@@ -9,15 +9,17 @@ export function registerWallPortals() {
   Hooks.on("renderWallConfig", injectPortalSection);
   Hooks.on("preCreateWall", (wall, data) => {
     const changes = {};
-    preparePortalChanges(data, changes);
+    preparePortalChanges(wall, data, changes);
     if ( !foundry.utils.isEmpty(changes) ) wall.updateSource(changes);
   });
-  Hooks.on("preUpdateWall", (wall, changes) => preparePortalChanges(changes, changes));
+  Hooks.on("preUpdateWall", (wall, changes) => preparePortalChanges(wall, changes, changes));
   Hooks.on("createWall", (wall, options, userId) => {
     if ( userId === game.user.id ) linkBack(wall);
   });
   Hooks.on("updateWall", (wall, changed, options, userId) => {
-    if ( (userId === game.user.id) && foundry.utils.hasProperty(changed, `flags.${MODULE_ID}.portal`) ) linkBack(wall);
+    if ( (userId === game.user.id) && (foundry.utils.hasProperty(changed, `flags.${MODULE_ID}.portal`)
+      || ("door" in changed)) ) linkBack(wall);
+    if ( "ds" in changed ) syncDoorState(wall, userId);
   });
 }
 
@@ -25,29 +27,41 @@ export function registerWallPortals() {
 
 /**
  * Clean up portal settings in Wall data, and make portal Walls block nothing: what lies beyond a
- * portal is handled by the module, so sight and movement must pass the Wall itself.
- * @param {object} data       The Wall data or changes to read
- * @param {object} changes    The changes to write to
+ * portal is handled by the module, so sight and movement must pass the Wall itself. Portal doors
+ * are the exception: closed, they block like any door, and open, Foundry lets everything through.
+ * @param {WallDocument} wall    The Wall being created or updated, as it was before
+ * @param {object} data          The Wall data or changes to read
+ * @param {object} changes       The changes to write to
  */
-function preparePortalChanges(data, changes) {
+function preparePortalChanges(wall, data, changes) {
   const path = `flags.${MODULE_ID}.portal.exit`;
-  if ( !foundry.utils.hasProperty(data, path) ) return;
-  const exit = foundry.utils.getProperty(data, path)?.trim() || null;
-  foundry.utils.setProperty(changes, path, exit);
+  const setsExit = foundry.utils.hasProperty(data, path);
+  if ( !setsExit && !("door" in data) ) return;
+  let exit = wall._source.flags[MODULE_ID]?.portal?.exit;
+  if ( setsExit ) {
+    exit = foundry.utils.getProperty(data, path)?.trim() || null;
+    foundry.utils.setProperty(changes, path, exit);
+  }
   if ( !exit ) return;
-  Object.assign(changes, {
-    move: CONST.WALL_MOVEMENT_TYPES.NONE,
-    sight: CONST.WALL_SENSE_TYPES.NONE,
-    light: CONST.WALL_SENSE_TYPES.NONE,
-    sound: CONST.WALL_SENSE_TYPES.NONE,
-    door: CONST.WALL_DOOR_TYPES.NONE
-  });
+
+  const types = {move: CONST.WALL_MOVEMENT_TYPES, sight: CONST.WALL_SENSE_TYPES,
+    light: CONST.WALL_SENSE_TYPES, sound: CONST.WALL_SENSE_TYPES};
+  if ( (data.door ?? wall._source.door) === CONST.WALL_DOOR_TYPES.NONE ) {
+    for ( const [key, type] of Object.entries(types) ) changes[key] = type.NONE;
+    return;
+  }
+
+  // A portal becoming a door had everything set to pass through it, so make it block while closed
+  if ( wall._source.door !== CONST.WALL_DOOR_TYPES.NONE ) return;
+  for ( const [key, type] of Object.entries(types) ) {
+    if ( (data[key] ?? wall._source[key]) === type.NONE ) changes[key] = type.NORMAL;
+  }
 }
 
 /* ---------------------------------------- */
 
 /**
- * Point a two-way portal's exit Wall back at it.
+ * Point a two-way portal's exit Wall back at it, and make it the same kind of door.
  * @param {WallDocument} wall
  */
 async function linkBack(wall) {
@@ -55,9 +69,31 @@ async function linkBack(wall) {
   if ( !flags?.twoWay ) return;
   const exit = fromUuidSync(flags.exit, {strict: false});
   if ( !(exit instanceof foundry.documents.WallDocument) || (exit === wall) ) return;
-  if ( getPortalFlags(exit)?.exit === wall.uuid ) return;
-  if ( !exit.canUserModify(game.user, "update") ) return;
-  await exit.update({flags: {[MODULE_ID]: {portal: {exit: wall.uuid, flip: flags.flip, twoWay: true}}}});
+  const changes = {};
+  if ( getPortalFlags(exit)?.exit !== wall.uuid ) {
+    changes.flags = {[MODULE_ID]: {portal: {exit: wall.uuid, flip: flags.flip, twoWay: true}}};
+  }
+  if ( exit.door !== wall.door ) Object.assign(changes, {door: wall.door, ds: wall.ds});
+  if ( foundry.utils.isEmpty(changes) || !exit.canUserModify(game.user, "update") ) return;
+  await exit.update(changes);
+}
+
+/* ---------------------------------------- */
+
+/**
+ * Open, close, or lock the other end of a two-way portal door along with this one: they are the
+ * same door, seen from two places. The active GM does it, since players may not update Walls.
+ * @param {WallDocument} wall
+ * @param {string} userId    The user who changed the door
+ */
+async function syncDoorState(wall, userId) {
+  const responsible = game.users.activeGM ?? game.users.get(userId);
+  if ( !responsible?.isSelf || !isPortalDoor(wall) || !getPortalFlags(wall).twoWay ) return;
+  const exit = fromUuidSync(getPortalFlags(wall).exit, {strict: false});
+  if ( !(exit instanceof foundry.documents.WallDocument) || (exit === wall) ) return;
+  if ( !isPortalDoor(exit) || (getPortalFlags(exit).exit !== wall.uuid) || (exit.ds === wall.ds) ) return;
+  if ( !exit.canUserModify(game.user, "update", {ds: wall.ds}) ) return;
+  await exit.update({ds: wall.ds});
 }
 
 /* ---------------------------------------- */

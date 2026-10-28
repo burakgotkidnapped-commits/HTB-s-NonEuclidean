@@ -62,6 +62,21 @@ function rewriteMovement(token, options) {
     return place(scaled, link.apply(centerOf(w)));
   };
 
+  // Past a portal the grid need not line up with the grid at the entrance, so a Token sent to a grid
+  // space would come out between spaces: snap it back onto the grid, unless that takes it back across a portal
+  const isSnapped = w => {
+    const snapped = token.getSnappedPosition(w);
+    return (Math.round(snapped.x) === Math.round(w.x)) && (Math.round(snapped.y) === Math.round(w.y));
+  };
+  const snap = w => {
+    const {x, y} = token.getSnappedPosition(w);
+    const snapped = {...w, x: Math.round(x), y: Math.round(y)};
+    const c0 = centerOf(w);
+    const c1 = centerOf(snapped);
+    const crosses = ({a, b}) => foundry.utils.lineSegmentIntersects(c0, c1, a, b);
+    return links.some(link => crosses(link.from) || (!link.crossScene && crosses(link.to))) ? w : snapped;
+  };
+
   // Every waypoint gets an explicit action: core fills a missing action from the previous waypoint,
   // which after a jump through a portal would be "displace" and teleport the Token the rest of the way
   const {x, y, elevation, width, height, shape, level} = token._source;
@@ -80,7 +95,9 @@ function rewriteMovement(token, options) {
     for ( const [k, v] of Object.entries(raw) ) if ( v !== undefined ) original[k] = v;
 
     // Carry it through the portals already passed
+    const drawnSnapped = isSnapped(original);
     let current = passedThrough.reduce((w, link) => traverse(link, w), original);
+    if ( passedThrough.length && drawnSnapped ) current = snap(current);
 
     if ( current.action !== "displace" ) {
       while ( crossings < MAX_CROSSINGS ) {
@@ -110,7 +127,7 @@ function rewriteMovement(token, options) {
         // An exit in another Scene: walk up to the portal, then teleport once the movement is done
         if ( link.crossScene ) {
           waypoints.push({...before, checkpoint: true});
-          teleport = {wall: link.entrance.uuid, point: along(JUMP_MARGIN)};
+          teleport = {wall: link.entrance.uuid, point: along(JUMP_MARGIN), snap: drawnSnapped};
           crossings++;
           break;
         }
@@ -121,6 +138,7 @@ function rewriteMovement(token, options) {
 
         passedThrough.push(link);
         current = traverse(link, current);
+        if ( drawnSnapped ) current = snap(current);
         previous = after;
         crossings++;
       }

@@ -1,5 +1,5 @@
 import {planeSide} from "./geometry.mjs";
-import {getPortalViews, showGhostVision, hideGhostVision} from "./vision.mjs";
+import {getPortalViews, showGhostVision, hideGhostVision, drawLitSeams} from "./vision.mjs";
 
 /**
  * Portal windows: a live picture of the far side of each portal, drawn over the space beyond it.
@@ -94,7 +94,10 @@ export default class PortalWindows {
       w.mask.destroy();
       this.windows.delete(id);
     }
-    if ( !active.size ) return;
+    if ( !active.size ) {
+      drawLitSeams(null);
+      return;
+    }
 
     // Place the window sprites in screen space. A copy in a loop shows its source's picture, shifted
     // so that what the source shows at P(w) appears at w
@@ -115,6 +118,7 @@ export default class PortalWindows {
     for ( const view of views ) {
       if ( !view.source ) this.#capture(view, this.windows.get(view.id).texture);
     }
+    drawLitSeams(null);
   }
 
   /* ---------------------------------------- */
@@ -161,8 +165,10 @@ export default class PortalWindows {
     const scale = stage.scale.x;
     const rotation = stage.rotation;
     const hidden = [canvas.interface, canvas.overlay, this.container].filter(c => c.renderable);
-    const moved = this.#moveTokensThrough(view);
-    const shown = this.#showTokensSeen(showGhostVision(view), moved);
+    const ghosts = showGhostVision(view);
+    drawLitSeams(view);
+    const doubled = this.#drawTokensThrough(view, ghosts);
+    const shown = this.#showTokensSeen(ghosts, doubled);
 
     try {
       const {transform} = view;
@@ -178,7 +184,7 @@ export default class PortalWindows {
       stage.scale.set(scale);
       stage.rotation = rotation;
       for ( const c of hidden ) c.renderable = true;
-      for ( const [mesh, state] of moved ) Object.assign(mesh, state);
+      for ( const mesh of doubled ) delete mesh.render;
       for ( const [mesh, visible] of shown ) mesh.visible = visible;
       hideGhostVision();
       PortalWindows.#invalidateScreenBuffers();
@@ -188,33 +194,54 @@ export default class PortalWindows {
   /* ---------------------------------------- */
 
   /**
-   * Temporarily move the meshes of Tokens touching the entrance to the matching point at the exit,
-   * so the part of a Token that has stepped through the portal shows up on the far side. Tokens the
-   * view shows where they really are stay put, such as in a room that leads back into itself,
-   * where the viewer sees their own Token from behind.
+   * Temporarily draw Tokens stepping through the portal a second time, at the matching point at the
+   * exit, so the part of a Token that has gone through shows up on the far side. A Token is stepping
+   * through when it touches the entrance from the side the view is seen from. It is still drawn where
+   * it really is too, if the view sees that spot, such as in a room that leads back into itself, where
+   * the viewer sees their own Token from behind.
    * @param {PortalView} view
-   * @returns {Map<PIXI.DisplayObject, object>}    The original transforms to restore
+   * @param {PointVisionSource[]|null} ghosts    The ghost vision seen through the portal, or null if
+   *                                             Token vision is off and every Token shows
+   * @returns {Set<PIXI.DisplayObject>}          The meshes drawn twice, whose own render to remove
    */
-  #moveTokensThrough(view) {
-    const moved = new Map();
+  #drawTokensThrough(view, ghosts) {
+    const doubled = new Set();
     const link = view.link;
     const area = link.planeBounds(canvas.grid.size * 2);
     const near = Math.sign(planeSide(link.to, view.eye));
     for ( const token of canvas.tokens.placeables ) {
       const mesh = token.mesh;
-      if ( !mesh || !token.visible || !token.bounds.intersects(area) ) continue;
-      if ( planeSide(link.to, mesh.position) * near < 0 ) continue;
-      moved.set(mesh, {
-        position: mesh.position.clone(),
-        rotation: mesh.rotation,
-        scale: mesh.scale.clone()
-      });
+      if ( !mesh || !mesh.visible || !token.visible || !token.bounds.intersects(area) ) continue;
+
+      // Compare beyond the exit, where the view's eye is: the Token's center, carried through, must
+      // be on the eye's side of the exit, as it is on the viewer's side of the entrance
       const p = link.apply(mesh.position);
-      mesh.position = new PIXI.Point(p.x, p.y);
-      mesh.rotation += link.angle;
-      mesh.scale = new PIXI.Point(mesh.scale.x * link.scale, mesh.scale.y * link.scale);
+      if ( planeSide(link.to, p) * near <= 0 ) continue;
+      const through = {
+        position: new PIXI.Point(p.x, p.y),
+        rotation: mesh.rotation + link.angle,
+        scale: new PIXI.Point(mesh.scale.x * link.scale, mesh.scale.y * link.scale)
+      };
+      const real = !ghosts || PortalWindows.#isSeen(token, ghosts);
+
+      // Batched sprites are read when the batch is flushed, so flush each copy before moving the mesh
+      const render = mesh.render;
+      mesh.render = function(renderer) {
+        if ( real ) {
+          render.call(this, renderer);
+          renderer.batch.flush();
+        }
+        const state = {position: this.position.clone(), rotation: this.rotation, scale: this.scale.clone()};
+        Object.assign(this, through);
+        this.updateTransform();
+        render.call(this, renderer);
+        renderer.batch.flush();
+        Object.assign(this, state);
+        this.updateTransform();
+      };
+      doubled.add(mesh);
     }
-    return moved;
+    return doubled;
   }
 
   /* ---------------------------------------- */
@@ -222,27 +249,39 @@ export default class PortalWindows {
   /**
    * Temporarily show exactly the Tokens the viewer sees through the portal: hidden ones the ghost
    * vision reaches appear, and ones the viewer only sees directly, from across the map, disappear.
-   * As in Foundry, a Token counts as seen within sight range, or anywhere in line of sight that is lit.
    * @param {PointVisionSource[]|null} ghosts    The ghost vision seen through the portal, or null if
    *                                             Token vision is off and every Token shows
-   * @param {Map<PIXI.DisplayObject, object>} moved    Meshes moved through the portal, which stay shown
-   * @returns {Map<PIXI.DisplayObject, boolean>}       The meshes changed, with their visibility to restore
+   * @param {Set<PIXI.DisplayObject>} doubled    Meshes drawn through the portal, which decide for themselves
+   * @returns {Map<PIXI.DisplayObject, boolean>} The meshes changed, with their visibility to restore
    */
-  #showTokensSeen(ghosts, moved) {
+  #showTokensSeen(ghosts, doubled) {
     const changed = new Map();
     if ( !ghosts ) return changed;
     for ( const token of canvas.tokens.placeables ) {
       const mesh = token.mesh;
-      if ( !mesh || moved.has(mesh) ) continue;
-      const {x, y} = token.center;
-      const seen = (!token.document.hidden || game.user.isGM) && token.document.includedInLevel(canvas.level)
-        && ghosts.some(g => g.shape.contains(x, y) || (g.light?.contains(x, y)
-          && canvas.effects.testInsideLight({x, y, elevation: token.document.elevation})));
+      if ( !mesh || doubled.has(mesh) ) continue;
+      const seen = PortalWindows.#isSeen(token, ghosts);
       if ( seen === mesh.visible ) continue;
       changed.set(mesh, mesh.visible);
       mesh.visible = seen;
     }
     return changed;
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * Does ghost vision see a Token where it really is? As in Foundry, a Token counts as seen within
+   * sight range, or anywhere in line of sight that is lit.
+   * @param {Token} token
+   * @param {PointVisionSource[]} ghosts
+   * @returns {boolean}
+   */
+  static #isSeen(token, ghosts) {
+    const {x, y} = token.center;
+    return (!token.document.hidden || game.user.isGM) && token.document.includedInLevel(canvas.level)
+      && ghosts.some(g => g.shape.contains(x, y) || (g.light?.contains(x, y)
+        && canvas.effects.testInsideLight({x, y, elevation: token.document.elevation})));
   }
 
   /* ---------------------------------------- */

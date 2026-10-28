@@ -65,6 +65,24 @@ export function getPortalFlags(wall) {
 }
 
 /**
+ * Is a portal Wall a door? A portal door is an ordinary door while closed, and a portal while open.
+ * @param {WallDocument} wall
+ * @returns {boolean}
+ */
+export function isPortalDoor(wall) {
+  return !!getPortalFlags(wall) && (wall.door !== CONST.WALL_DOOR_TYPES.NONE);
+}
+
+/**
+ * Does a portal Wall lead through right now? Portal doors only do while open.
+ * @param {WallDocument} wall
+ * @returns {boolean}
+ */
+export function isPortalOpen(wall) {
+  return (wall.door === CONST.WALL_DOOR_TYPES.NONE) || (wall.ds === CONST.WALL_DOOR_STATES.OPEN);
+}
+
+/**
  * Which side of a plane's line a point is on, as a signed distance.
  * @param {PortalPlane} plane
  * @param {Point} point
@@ -239,6 +257,19 @@ export class PortalLink {
   pointAt(t) {
     const {a, b} = this.from;
     return {x: a.x + ((b.x - a.x) * t), y: a.y + ((b.y - a.y) * t)};
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * How far a point is from the nearest point of the entrance Wall.
+   * @param {Point} point
+   * @returns {number}
+   */
+  distance({x, y}) {
+    const {a, direction, halfLength} = this.from;
+    const t = Math.clamp(((x - a.x) * direction.x) + ((y - a.y) * direction.y), 0, halfLength * 2);
+    return Math.hypot(x - (a.x + (direction.x * t)), y - (a.y + (direction.y * t)));
   }
 
   /* ---------------------------------------- */
@@ -479,7 +510,7 @@ function buildLinks(scene) {
   const links = [];
   for ( const wall of scene.walls ) {
     const flags = getPortalFlags(wall);
-    if ( !flags ) continue;
+    if ( !flags || !isPortalOpen(wall) ) continue;
     const exit = fromUuidSync(flags.exit, {strict: false});
     if ( !(exit instanceof foundry.documents.WallDocument) || (exit === wall) ) continue;
     links.push(new PortalLink({entrance: wall, exit, flip: flags.flip}));

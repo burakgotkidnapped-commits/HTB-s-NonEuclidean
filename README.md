@@ -16,6 +16,11 @@ Any wall can be a portal. Open the wall's config, and in the **Portal** section 
 click the crosshair button, then click the exit wall on the map. With **Two-Way** on, the exit wall
 becomes a portal leading back. Portal walls never block sight or movement themselves.
 
+**Portal doors:** set the wall's **Door** type (Door or Secret Door) as well, and the portal acts like
+a regular door. Closed or locked, it blocks sight, light, sound, and movement like any door, and
+nothing shows through it. Open, it is a portal. The two ends of a two-way portal door are one door:
+they share their door type, and opening, closing, or locking either end does the same to the other.
+
 - **Walking:** a move that crosses the portal wall continues out of the exit wall as one uninterrupted
   movement. Drag a Token to a spot you see through the portal and it walks there.
 - **Seeing:** looking at the portal shows a live view of what lies beyond the exit: lighting, fog,
@@ -25,6 +30,11 @@ becomes a portal leading back. Portal walls never block sight or movement themse
   how many portals deep the scene is drawn in full (default 4); each level draws the scene again.
   Past that, loops carry on to the edge of the screen with copies of the levels already drawn,
   which cost almost nothing.
+- **Light:** lights shine through portals too. A light near a portal stops at it and lights the
+  space beyond the exit instead, on the real map as well as in portal views, so a torch on the far
+  side lights up what you see through the portal, and Tokens there can be seen by it. Torches carried
+  by Tokens follow them as they move, and light carries on through portals it reaches beyond an exit,
+  up to the **Portal View Depth**. Animated lights flicker in step on both sides.
 - **Camera:** when a controlled Token crosses, the view moves with it on the same frame, so nothing on
   screen changes.
 
@@ -57,6 +67,9 @@ is a teleport, not seamless.
 - Copies past the view depth show what the deepest drawn level sees. A Token's sight range is not
   counted again for each copy, so a limited sight range doesn't fade out the far copies.
 - Exits on another Level of the same Scene move the Token there, but views through them aren't drawn.
+- Darkness sources, and lights set not to be constrained by walls, don't pass through portals.
+  Lights only pass through portals on the Level being viewed. At most 64 lights are carried
+  through portals at once.
 - Portal views only render while you have a Token selected (or vision Tokens as a player), so the
   GM sees the real map when editing.
 - All movement is routed through portals, including direct `update({x, y})` calls, which Foundry
@@ -89,6 +102,7 @@ scripts/
     pathing.mjs            routes movement through portals
     camera.mjs             moves the view with Tokens that cross
     vision.mjs             cuts sight at portals, ghost vision beyond exits
+    lighting.mjs           cuts light at portals, ghost lights beyond exits
     renderer.mjs           draws the live view through each portal
   impossible-spaces/
   curved-space/

@@ -41,7 +41,7 @@
     },
     "WallPortal": {
       "Legend": "Portal",
-      "Hint": "Turn this wall into a portal. Walking across it continues the walk out of the exit wall, and looking at it shows what lies beyond the exit. Portal walls never block sight or movement themselves.",
+      "Hint": "Turn this wall into a portal. Walking across it continues the walk out of the exit wall, and looking at it shows what lies beyond the exit. Portal walls never block sight or movement themselves, unless they are doors: give the wall a Door type to make a portal door, which blocks like any door while closed and is a portal while open.",
       "Exit": "Exit Wall",
       "ExitHint": "Pick the wall on the map, or paste a wall's UUID to lead to another Scene. Leave empty to make this an ordinary wall again.",
       "NoExit": "Not a portal",

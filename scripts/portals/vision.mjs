@@ -63,6 +63,15 @@ export function patchVisionSources() {
      */
     portalClip = null;
 
+    /**
+     * Ghosts are never attached to the active vision sources, but their vision mode, such as
+     * darkvision, is drawn in portal views, and Foundry only draws that for active sources.
+     * @override
+     */
+    get active() {
+      return !this.data.disabled && !this.suppressed;
+    }
+
     /** @override */
     _getPolygonBackend() {
       return GhostSweep;
@@ -78,12 +87,12 @@ export function patchVisionSources() {
 /* ---------------------------------------- */
 
 /**
- * A polygon backend for ghost vision that only takes walls beyond the exit plane into account.
+ * A polygon backend for ghost vision or light that only takes walls beyond the exit plane into account.
  * Walls on the ghost's side of the exit are dropped, and walls crossing it are trimmed to the far side.
- * @param {typeof ClockwiseSweepPolygon} Sweep    The configured sight backend
+ * @param {typeof ClockwiseSweepPolygon} Sweep    The configured sight or light backend
  * @returns {typeof ClockwiseSweepPolygon}
  */
-function createGhostSweep(Sweep) {
+export function createGhostSweep(Sweep) {
   return class PortalGhostSweep extends Sweep {
     /**
      * The canvas, grown to take in the origin. Ghosts often look from the scene's edge or beyond it,
@@ -178,12 +187,16 @@ function createGhostSweep(Sweep) {
 /* ---------------------------------------- */
 
 /**
- * The parts of the canvas a real vision source at this origin may still see:
+ * The parts of the canvas a real vision or light source at this origin may still reach:
  * everything except what lies beyond each portal plane it looks through.
- * @param {{x: number, y: number}} origin
+ * @param {{x: number, y: number, elevation?: number}} origin
+ * @param {object} [options]
+ * @param {"sight"|"light"} [options.type="sight"]    Which walls block the source
+ * @param {number} [options.radius=Infinity]          How far the source reaches: portals past it are left alone
+ * @param {number} [options.overlap]                  How far past each portal the source still reaches
  * @returns {PIXI.Polygon[]}
  */
-function getPortalCuts(origin) {
+export function getPortalCuts(origin, {type="sight", radius=Infinity, overlap=seamOverlap()}={}) {
   const links = getViewedPortalLinks();
   if ( !links.length ) return [];
   const {x, y, width, height} = canvas.dimensions.rect;
@@ -191,17 +204,41 @@ function getPortalCuts(origin) {
   const cuts = [];
   let los;
   for ( const link of links ) {
-    if ( !link.side(origin) ) continue;
+    if ( !link.side(origin) || (link.distance(origin) >= radius) ) continue;
 
     // Only cut where the portal is actually in view, so walls elsewhere keep working as usual
-    los ??= CONFIG.Canvas.polygonBackends.sight.create({x: origin.x, y: origin.y, elevation: origin.elevation ?? 0},
-      {type: "sight", level: canvas.level});
+    los ??= CONFIG.Canvas.polygonBackends[type].create({x: origin.x, y: origin.y, elevation: origin.elevation ?? 0},
+      {type, level: canvas.level});
     for ( const [t0, t1] of link.visibleIntervals(origin, los) ) {
-      const wedge = link.wedge(origin, t0, t1, -seamOverlap()); // Let real sight reach a little past the portal
-      if ( wedge ) cuts.push(subtract(canvasPolygon, wedge, origin));
+      const wedge = link.wedge(origin, t0, t1, -overlap); // Let real sight reach a little past the portal
+      if ( wedge ) cuts.push(asBoundary(subtract(canvasPolygon, wedge, origin)));
     }
   }
   return cuts;
+}
+
+/**
+ * Make a polygon safe to use as a boundary shape of a source. Foundry intersects the source's shape
+ * with each boundary shape and keeps only the first piece that comes out. Where a portal's edges and
+ * the shadows of walls at its ends miss each other by a fraction of a pixel, slivers come out too, and
+ * if one comes first the whole source shrinks to it. So keep the largest piece instead.
+ * @param {PIXI.Polygon} polygon
+ * @returns {PIXI.Polygon}    The same polygon
+ */
+export function asBoundary(polygon) {
+  polygon.intersectPolygon = function(other, {scalingFactor=CONST.CLIPPER_SCALING_FACTOR}={}) {
+    const solution = this.intersectClipper(other.toClipperPoints({scalingFactor}), {scalingFactor});
+    let largest = [];
+    let area = 0;
+    for ( const path of solution ) {
+      const a = Math.abs(ClipperLib.Clipper.Area(path));
+      if ( a <= area ) continue;
+      largest = path;
+      area = a;
+    }
+    return PIXI.Polygon.fromClipperPoints(largest, {scalingFactor});
+  };
+  return polygon;
 }
 
 /**
@@ -210,7 +247,7 @@ function getPortalCuts(origin) {
  * @param {PIXI.Polygon} other
  * @returns {PIXI.Polygon|null}
  */
-function union(polygon, other) {
+export function union(polygon, other) {
   if ( !polygon ) return null;
   const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
   const [points] = polygon.intersectClipper(other.toClipperPoints({scalingFactor}),
@@ -243,7 +280,7 @@ function subtract(polygon, wedge, keep) {
  * @param {Point} origin          Where the view is seen from, mapped through the first portal
  * @returns {boolean}
  */
-function isPast(through, link, origin) {
+export function isPast(through, link, origin) {
   if ( link.entrance === through.exit ) return false;
   const near = Math.sign(planeSide(through.to, origin));
   return (planeSide(through.to, link.from.a) * near < 0.5) && (planeSide(through.to, link.from.b) * near < 0.5);
@@ -255,9 +292,10 @@ function isPast(through, link, origin) {
  * @param {Point} origin            Where the ghost looks from
  * @param {PortalLink[]} links
  * @param {PortalLink} through      The portal the ghost looks out of
+ * @param {number} [overlap]        How far past each portal the ghost still reaches
  * @returns {PIXI.Polygon[]}
  */
-function getGhostCuts(origin, links, through) {
+export function getGhostCuts(origin, links, through, overlap=seamOverlap()) {
   // The canvas, grown to take in the origin, which may lie beyond its edge
   const {x, y, width, height} = canvas.dimensions.rect;
   const pad = canvas.dimensions.size;
@@ -269,8 +307,8 @@ function getGhostCuts(origin, links, through) {
   const cuts = [];
   for ( const link of links ) {
     if ( !isPast(through, link, origin) ) continue;
-    const wedge = link.wedge(origin, 0, 1, -seamOverlap());
-    if ( wedge ) cuts.push(subtract(canvasPolygon, wedge, origin));
+    const wedge = link.wedge(origin, 0, 1, -overlap);
+    if ( wedge ) cuts.push(asBoundary(subtract(canvasPolygon, wedge, origin)));
   }
   return cuts;
 }
@@ -362,7 +400,7 @@ function repeatLoops(rendered, maxDepth, screen) {
     const fromParent = parent.transform.invert();
     const masks = [];
     for ( const eye of parent.eyes ) {
-      const wedge = loop.next.wedge(parent.transform.apply(eye), 0, 1, 1);
+      const wedge = loop.next.wedge(parent.transform.apply(eye), 0, 1);
       if ( !wedge ) continue;
       const clip = fromParent.applyPolygon(wedge).toClipperPoints({scalingFactor});
       for ( const mask of parent.masks ) {
@@ -444,7 +482,8 @@ export function syncGhostVision() {
 
       // One ghost per stretch of the portal the viewer can actually see past walls
       for ( const [i, [t0, t1]] of link.visibleIntervals(parent.from, parent.los).entries() ) {
-        const wedge = link.wedge(parent.from, t0, t1, 1);
+        // Start the window exactly at the portal: light stops exactly there, and nothing hides under the window
+        const wedge = link.wedge(parent.from, t0, t1);
         if ( !wedge ) continue;
         const mask = parent.inverse.applyPolygon(wedge);
         if ( !mask.intersectClipper(screen, {scalingFactor}).length ) continue; // Off screen
@@ -505,7 +544,8 @@ function sightBeyond(node, from, t0, t1, links) {
   const {key, link, eye, transform} = node;
   const boundaries = () => {
     // Let ghost sight start a little before the exit, so its soft edge doesn't show at the portal
-    const boundary = link.applyPolygon(union(link.wedge(from, t0, t1), link.band(from, t0, t1, seamOverlap())));
+    const boundary = asBoundary(link.applyPolygon(union(link.wedge(from, t0, t1),
+      link.band(from, t0, t1, seamOverlap()))));
     boundary._includeEdge = (a, b) => !link.isExitEdge(a, b); // See past the exit Wall even if it blocks
     return [boundary, ...getGhostCuts(node.from, links, link)];
   };
@@ -552,6 +592,11 @@ function sightBeyond(node, from, t0, t1, links) {
     ghost.portalSignature = signature;
     ghost.portalLinks = allLinks;
     ghost.initialize(data);
+    try {
+      ghost._configure({}); // Set up the meshes its vision mode is drawn with, as attaching it would
+    } catch(err) {
+      log("error", "Failed to set up vision mode through a portal", err);
+    }
   }
   ghost.portalViewId = node.view.id;
   return ghost.los;
@@ -581,7 +626,97 @@ function screenPolygon() {
  * Ghosts are never added to the active vision sources, so the real map stays exactly as the
  * Token sees it, walls and all.
  */
-const overlays = {sight: null, light: null, realLightMask: null};
+const overlays = {sight: null, light: null, realLightMask: null, seams: null};
+
+/* ---------------------------------------- */
+
+/**
+ * Carry the lit area across the portals in a picture, the real map or a portal view. Light stops
+ * exactly at portals, and Foundry blurs the edge of what is visible, so without this a faint shadow
+ * would show along each portal. Beyond each portal, under the window that covers it, the lit area
+ * just beyond its exit is drawn, and in a portal view, the lit area just before its entrance is drawn
+ * before the exit, where the window leaves it out. Neither shows itself: only its blur reaches over.
+ * @param {PortalView|null} view    The view being drawn, or null for the real map
+ */
+export function drawLitSeams(view) {
+  const vision = canvas.visibility.vision;
+  if ( !vision?.light ) return;
+  if ( overlays.seams?.parent !== vision.light ) {
+    overlays.seams?.destroy();
+    overlays.seams = vision.light.addChild(new PIXI.LegacyGraphics());
+    overlays.seams.blendMode = PIXI.BLEND_MODES.MAX_COLOR;
+  }
+  const graphics = overlays.seams;
+  if ( graphics.geometry.graphicsData.length ) {
+    graphics.clear();
+    canvas.masks.vision.renderDirty = true;
+  }
+  if ( !canvas.visibility.tokenVision || !views.length ) return;
+  canvas.masks.vision.renderDirty = true;
+  const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
+  const width = seamOverlap();
+  const transform = view?.transform ?? Similarity.IDENTITY;
+  graphics.beginFill(0xFF0000);
+
+  // Beyond the portals seen in this picture, clipped to their windows
+  const depth = (view?.depth ?? 0) + 1;
+  for ( const child of views ) {
+    if ( (child.depth !== depth) || (view && !child.id.startsWith(`${view.id}>`)) ) continue;
+    const link = child.link;
+    const back = link.transform.invert();
+    const windows = child.masks.map(mask => transform.applyPolygon(mask).toClipperPoints({scalingFactor}));
+    const beyond = -Math.sign(planeSide(link.to, child.eye)) || 1;
+    for ( const lit of litStrip(link.to, beyond, width) ) {
+      const mapped = back.applyPolygon(lit);
+      for ( const clip of windows ) {
+        for ( const points of mapped.intersectClipper(clip, {scalingFactor}) ) {
+          graphics.drawShape(PIXI.Polygon.fromClipperPoints(points, {scalingFactor}));
+        }
+      }
+    }
+  }
+
+  // Before the exit of this view, on the side it is seen from
+  if ( view ) {
+    const link = view.link;
+    const eye = link.transform.invert().apply(view.eye);
+    const near = Math.sign(planeSide(link.from, eye)) || 1;
+    for ( const lit of litStrip(link.from, near, width / link.scale) ) graphics.drawShape(link.applyPolygon(lit));
+  }
+  graphics.endFill();
+}
+
+/**
+ * The lit area in a strip along one side of a portal plane.
+ * @param {PortalPlane} plane
+ * @param {number} side        1 or -1, the side of the plane, as {@link planeSide} gives it
+ * @param {number} width
+ * @returns {PIXI.Polygon[]}
+ */
+function litStrip({a, b, direction}, side, width) {
+  const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
+  const nx = -direction.y * side * width;
+  const ny = direction.x * side * width;
+  const strip = new PIXI.Polygon(a.x, a.y, b.x, b.y, b.x + nx, b.y + ny, a.x + nx, a.y + ny);
+  const bounds = strip.getBounds();
+  const clip = strip.toClipperPoints({scalingFactor});
+  const lit = [];
+  for ( const light of canvas.effects.lightSources ) {
+    if ( !light.hasActiveLayer || light.isPreview || !light.shape ) continue;
+    if ( light instanceof foundry.canvas.sources.GlobalLightSource ) continue;
+    if ( !(light.shape.bounds ?? light.shape.getBounds()).intersects(bounds) ) continue;
+    for ( const points of light.shape.intersectClipper(clip, {scalingFactor}) ) {
+      lit.push(PIXI.Polygon.fromClipperPoints(points, {scalingFactor}));
+    }
+  }
+  return lit;
+}
+
+/**
+ * Vision mode meshes swapped while a portal view is captured: the ghosts' meshes added, the Tokens'
+ * own meshes hidden, and the containers whose visibility was changed, to restore.
+ */
+const visionEffects = {added: [], hidden: [], containers: []};
 
 /**
  * Show only the ghost vision seen in one portal view. The Tokens' own sight is hidden meanwhile:
@@ -630,11 +765,66 @@ export function showGhostVision(view) {
   // Foundry reaches these through the mask while rendering
   for ( const key of ["preview", "shared", "surfaceExposure"] ) overlays.light[key] = realLightMask[key];
   canvas.masks.vision.renderDirty = true;
+  showVisionEffects(shown);
   return shown;
+}
+
+/**
+ * Draw the vision modes of the ghosts seen in a portal view, such as darkvision brightening what it
+ * sees, in place of the Tokens' own. Otherwise the view would show the space beyond the exit as if
+ * seen with plain sight, and look darker than the space before the portal.
+ * @param {PointVisionSource[]} shown    The ghosts drawn
+ */
+function showVisionEffects(shown) {
+  const {background, illumination, coloration} = canvas.effects;
+  for ( const source of canvas.effects.visionSources ) {
+    for ( const layer of Object.values(source.layers) ) {
+      const mesh = layer.mesh;
+      if ( !mesh?.parent || !mesh.renderable ) continue;
+      mesh.renderable = false;
+      visionEffects.hidden.push(mesh);
+    }
+  }
+
+  // As Foundry does for active vision sources when lighting is refreshed
+  const add = (container, mesh) => {
+    if ( !mesh ) return;
+    container.addChild(mesh);
+    visionEffects.added.push(mesh);
+  };
+  for ( const ghost of shown ) {
+    if ( (ghost.radius <= 0) || !ghost._geometry ) continue; // Without meshes if setting them up failed
+    ghost.refresh();
+    const meshes = ghost.drawMeshes();
+    add(ghost.preferred ? background.visionPreferred : background.vision, meshes.background);
+    add(illumination.lights, meshes.illumination);
+    add(coloration, meshes.coloration);
+  }
+
+  // Foundry hides the background vision containers, and turns off their filters, when they hold nothing
+  for ( const container of [background.vision, background.visionPreferred] ) {
+    visionEffects.containers.push([container, container.visible, container.filter.enabled]);
+    container.visible = container.filter.enabled = container.children.some(c => c.renderable && c.visible);
+  }
+  visionEffects.containers.push([coloration, coloration.visible, null]);
+  if ( visionEffects.added.some(mesh => mesh.parent === coloration) ) coloration.visible = true;
+}
+
+/** Put the Tokens' own vision modes back, after a portal view is captured. */
+function hideVisionEffects() {
+  for ( const mesh of visionEffects.added ) if ( !mesh.destroyed ) mesh.parent?.removeChild(mesh);
+  for ( const mesh of visionEffects.hidden ) if ( !mesh.destroyed ) mesh.renderable = true;
+  for ( const [container, visible, filtered] of visionEffects.containers ) {
+    if ( container.destroyed ) continue;
+    container.visible = visible;
+    if ( filtered !== null ) container.filter.enabled = filtered;
+  }
+  visionEffects.added.length = visionEffects.hidden.length = visionEffects.containers.length = 0;
 }
 
 /** Put the Tokens' own vision back, after a portal view is captured. */
 export function hideGhostVision() {
+  hideVisionEffects();
   const vision = canvas.visibility.vision;
   if ( overlays.realLightMask ) {
     if ( vision?.light && !vision.light.destroyed ) vision.light.mask = overlays.realLightMask;
@@ -654,7 +844,7 @@ export function clearGhostVision() {
   ghosts.clear();
   sights.clear();
   views = [];
-  for ( const key of ["sight", "light"] ) {
+  for ( const key of ["sight", "light", "seams"] ) {
     overlays[key]?.destroy();
     overlays[key] = null;
   }
