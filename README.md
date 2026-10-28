@@ -14,12 +14,17 @@ A Foundry Virtual Tabletop v14 module for non-Euclidean geometry.
 
 Any wall can be a portal. Open the wall's config, and in the **Portal** section set the **Exit Wall**:
 click the crosshair button, then click the exit wall on the map. With **Two-Way** on, the exit wall
-becomes a portal leading back. Portal walls never block sight or movement themselves.
+becomes a portal leading back. Portal walls never block sight or movement themselves, except windows and doors (below).
 
 **Portal doors:** set the wall's **Door** type (Door or Secret Door) as well, and the portal acts like
 a regular door. Closed or locked, it blocks sight, light, sound, and movement like any door, and
 nothing shows through it. Open, it is a portal. The two ends of a two-way portal door are one door:
 they share their door type, and opening, closing, or locking either end does the same to the other.
+
+**Portal windows:** turn on **Window** and the portal can be seen and lit through but not walked
+through: the wall blocks movement, and a move that reaches it stops in front of it, even a move
+carried through another portal first. Two-way windows are windows at both ends. A window can also be
+a door, like shutters: closed it blocks everything, open it is a window.
 
 - **Walking:** a move that crosses the portal wall continues out of the exit wall as one uninterrupted
   movement. Drag a Token to a spot you see through the portal and it walks there.

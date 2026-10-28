@@ -86,9 +86,10 @@ function rewriteMovement(token, options) {
   const waypoints = [];
   let crossings = 0;
   let teleport = null;
+  let blocked = false;
 
   for ( const raw of movement.waypoints ) {
-    if ( teleport ) break;
+    if ( teleport || blocked ) break;
 
     // Fill in missing fields the way core does, from the previous waypoint as the user drew it
     original = {...original};
@@ -124,6 +125,16 @@ function rewriteMovement(token, options) {
         const before = place({...previous, action: current.action, snapped: false, explicit: false,
           checkpoint: false}, along(-JUMP_MARGIN));
 
+        // A window can be seen through but not walked through: stop in front of it. Core already
+        // stops at the window Wall itself, but not on a path carried through other portals, or at
+        // a window door that is open
+        if ( link.window ) {
+          waypoints.push({...before, checkpoint: true});
+          previous = before;
+          blocked = true;
+          break;
+        }
+
         // An exit in another Scene: walk up to the portal, then teleport once the movement is done
         if ( link.crossScene ) {
           waypoints.push({...before, checkpoint: true});
@@ -144,12 +155,13 @@ function rewriteMovement(token, options) {
       }
     }
 
-    if ( teleport ) break;
+    if ( teleport || blocked ) break;
     waypoints.push(current);
     previous = current;
   }
 
   if ( !crossings ) {
+    if ( blocked ) options.movement[token.id] = {...movement, waypoints};
     // Seen through a portal, the Token is on screen already: don't pan to where it really is
     if ( (token.parent === canvas.scene) && isOnlySeenThroughPortals(centerOf(previous)) ) options.pan = false;
     return;

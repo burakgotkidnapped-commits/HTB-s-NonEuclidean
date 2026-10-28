@@ -27,27 +27,34 @@ export function registerWallPortals() {
 
 /**
  * Clean up portal settings in Wall data, and make portal Walls block nothing: what lies beyond a
- * portal is handled by the module, so sight and movement must pass the Wall itself. Portal doors
- * are the exception: closed, they block like any door, and open, Foundry lets everything through.
+ * portal is handled by the module, so sight and movement must pass the Wall itself. Portal windows
+ * block movement, since nothing walks through them. Portal doors are the exception: closed, they
+ * block like any door, and open, Foundry lets everything through.
  * @param {WallDocument} wall    The Wall being created or updated, as it was before
  * @param {object} data          The Wall data or changes to read
  * @param {object} changes       The changes to write to
  */
 function preparePortalChanges(wall, data, changes) {
   const path = `flags.${MODULE_ID}.portal.exit`;
+  const windowPath = `flags.${MODULE_ID}.portal.window`;
   const setsExit = foundry.utils.hasProperty(data, path);
-  if ( !setsExit && !("door" in data) ) return;
+  const setsWindow = foundry.utils.hasProperty(data, windowPath);
+  if ( !setsExit && !setsWindow && !("door" in data) ) return;
   let exit = wall._source.flags[MODULE_ID]?.portal?.exit;
   if ( setsExit ) {
     exit = foundry.utils.getProperty(data, path)?.trim() || null;
     foundry.utils.setProperty(changes, path, exit);
   }
   if ( !exit ) return;
+  const isWindow = setsWindow ? !!foundry.utils.getProperty(data, windowPath)
+    : !!wall._source.flags[MODULE_ID]?.portal?.window;
 
   const types = {move: CONST.WALL_MOVEMENT_TYPES, sight: CONST.WALL_SENSE_TYPES,
     light: CONST.WALL_SENSE_TYPES, sound: CONST.WALL_SENSE_TYPES};
   if ( (data.door ?? wall._source.door) === CONST.WALL_DOOR_TYPES.NONE ) {
-    for ( const [key, type] of Object.entries(types) ) changes[key] = type.NONE;
+    for ( const [key, type] of Object.entries(types) ) {
+      changes[key] = ((key === "move") && isWindow) ? type.NORMAL : type.NONE;
+    }
     return;
   }
 
@@ -70,8 +77,9 @@ async function linkBack(wall) {
   const exit = fromUuidSync(flags.exit, {strict: false});
   if ( !(exit instanceof foundry.documents.WallDocument) || (exit === wall) ) return;
   const changes = {};
-  if ( getPortalFlags(exit)?.exit !== wall.uuid ) {
-    changes.flags = {[MODULE_ID]: {portal: {exit: wall.uuid, flip: flags.flip, twoWay: true}}};
+  const back = getPortalFlags(exit);
+  if ( (back?.exit !== wall.uuid) || (back.window !== flags.window) ) {
+    changes.flags = {[MODULE_ID]: {portal: {exit: wall.uuid, flip: flags.flip, twoWay: true, window: flags.window}}};
   }
   if ( exit.door !== wall.door ) Object.assign(changes, {door: wall.door, ds: wall.ds});
   if ( foundry.utils.isEmpty(changes) || !exit.canUserModify(game.user, "update") ) return;
@@ -133,6 +141,11 @@ function injectPortalSection(app, element) {
       <label for="${id("twoWay")}">${_loc("NONEUCLID.WallPortal.TwoWay")}</label>
       <div class="form-fields"><input type="checkbox" id="${id("twoWay")}" name="${name("twoWay")}"></div>
       <p class="hint">${_loc("NONEUCLID.WallPortal.TwoWayHint")}</p>
+    </div>
+    <div class="form-group">
+      <label for="${id("window")}">${_loc("NONEUCLID.WallPortal.Window")}</label>
+      <div class="form-fields"><input type="checkbox" id="${id("window")}" name="${name("window")}"></div>
+      <p class="hint">${_loc("NONEUCLID.WallPortal.WindowHint")}</p>
     </div>`;
 
   // Set values through the DOM so nothing user-provided is parsed as HTML
@@ -140,6 +153,7 @@ function injectPortalSection(app, element) {
   exitInput.value = flags.exit ?? "";
   fieldset.querySelector(`[name="${name("flip")}"]`).checked = !!flags.flip;
   fieldset.querySelector(`[name="${name("twoWay")}"]`).checked = flags.twoWay ?? true;
+  fieldset.querySelector(`[name="${name("window")}"]`).checked = !!flags.window;
   fieldset.querySelector("[data-noneuclid-pick]").addEventListener("click", () => pickExitWall(app, exitInput));
 
   const restrictions = form.querySelector("fieldset");

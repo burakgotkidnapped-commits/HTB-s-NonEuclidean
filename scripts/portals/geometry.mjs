@@ -16,6 +16,7 @@ import {MODULE_ID} from "../constants.mjs";
  * @property {string|null} exit    UUID of the exit Wall
  * @property {boolean} flip        Come out of the exit heading the opposite way
  * @property {boolean} twoWay      Keep the exit Wall linked back to this one
+ * @property {boolean} window      Only see and shine through the portal: nothing can pass it
  */
 
 /**
@@ -61,7 +62,7 @@ export function wallPlane(wall) {
 export function getPortalFlags(wall) {
   const flags = wall.flags[MODULE_ID]?.portal;
   if ( !flags?.exit ) return null;
-  return {exit: flags.exit, flip: !!flags.flip, twoWay: flags.twoWay ?? true};
+  return {exit: flags.exit, flip: !!flags.flip, twoWay: flags.twoWay ?? true, window: !!flags.window};
 }
 
 /**
@@ -175,11 +176,15 @@ export class PortalLink {
    * @param {WallDocument} options.entrance    The entrance Wall
    * @param {WallDocument} options.exit        The exit Wall, possibly in another Scene
    * @param {boolean} [options.flip=false]     Come out heading the opposite way
+   * @param {boolean} [options.window=false]   Only look through it: Tokens can't pass
    */
-  constructor({entrance, exit, flip=false}) {
+  constructor({entrance, exit, flip=false, window=false}) {
     this.id = entrance.id;
     this.entrance = entrance;
     this.exit = exit;
+
+    /** Is this a portal window? Sight and light pass through it, but Tokens don't. */
+    this.window = window;
     this.from = wallPlane(entrance);
 
     // Walls have no front, so line the exit up with the entrance as closely as possible:
@@ -513,7 +518,7 @@ function buildLinks(scene) {
     if ( !flags || !isPortalOpen(wall) ) continue;
     const exit = fromUuidSync(flags.exit, {strict: false});
     if ( !(exit instanceof foundry.documents.WallDocument) || (exit === wall) ) continue;
-    links.push(new PortalLink({entrance: wall, exit, flip: flags.flip}));
+    links.push(new PortalLink({entrance: wall, exit, flip: flags.flip, window: flags.window}));
   }
   return links;
 }
