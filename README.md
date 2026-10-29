@@ -71,6 +71,8 @@ From outside, the hallway still looks 10 squares long on the map.
 
 #### Another Scene
 
+Portals to other scenes DO work but are not recommended.
+
 Paste the UUID of a wall in another Scene as the exit (for example from
 `canvas.walls.controlled[0].document.uuid` in the console there). The Token walks up to the portal, then moves to the other Scene. This one
 is a teleport, not seamless. Everyone who had the Token selected goes to the other Scene with it,
@@ -82,6 +84,8 @@ level instead, unless its global illumination lights it. Portals in the other Sc
 them, and hidden Tokens there show only to the GM.
 
 #### Another Level
+
+Portals to other levels technically work but are not recommended.
 
 A portal whose exit wall is on another Level of the same Scene works the same way as one into another
 Scene. Viewing the entrance's Level, you can pick the exit by clicking only if it shows on that Level;
@@ -95,6 +99,7 @@ Level being viewed.
 
 #### Limitations
 
+- The module is completely imcompatible with Fog of War, you have to disable it from the scene settings if you wish to use it.
 - The camera can't rotate. A portal that turns (flip, or walls at an angle) keeps the Token
   on screen, but the view visibly rotates.
 - At most 16 portal views are drawn in full and 64 copied at once. Past that, and past the view
