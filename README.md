@@ -4,14 +4,14 @@ A Foundry Virtual Tabletop v14 module for non-Euclidean geometry.
 
 This is an early release (0.1): portals are the main feature, and the limitations below are worth
 reading before you build a scene around them. Bug reports are welcome on the
-[issue tracker](https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/issues).
+[issue tracker](https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidean/issues).
 
 ## Installation
 
 In Foundry's **Add-on Modules** tab, click **Install Module** and paste this manifest URL:
 
 ```
-https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/releases/latest/download/module.json
+https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidean/releases/latest/download/module.json
 ```
 
 ## Features
