@@ -1,7 +1,7 @@
 {
-  "id": "noneuclid",
+  "id": "htb-noneuclidean",
   "title": "HTB's Non-Euclidean",
-  "description": "Non-Euclidean geometry for Foundry VTT: portals, impossible spaces, and curved space.",
+  "description": "Non-Euclidean geometry for Foundry VTT: portals you can see and walk through, and impossible spaces that are bigger on the inside.",
   "version": "0.1.0",
   "authors": [
     {
@@ -11,7 +11,7 @@
   ],
   "compatibility": {
     "minimum": "14",
-    "verified": "14"
+    "verified": "14.369"
   },
   "esmodules": [
     "scripts/main.mjs"
@@ -32,6 +32,9 @@
     }
   },
   "url": "https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian",
-  "manifest": "https://raw.githubusercontent.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/main/module.json",
-  "download": "https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/archive/refs/heads/main.zip"
+  "bugs": "https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/issues",
+  "readme": "https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/blob/main/README.md",
+  "license": "LICENSE",
+  "manifest": "https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/releases/latest/download/module.json",
+  "download": "https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/releases/download/v0.1.0/module.zip"
 }

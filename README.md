@@ -2,13 +2,25 @@
 
 A Foundry Virtual Tabletop v14 module for non-Euclidean geometry.
 
+This is an early release (0.1): portals are the main feature, and the limitations below are worth
+reading before you build a scene around them. Bug reports are welcome on the
+[issue tracker](https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/issues).
+
+## Installation
+
+In Foundry's **Add-on Modules** tab, click **Install Module** and paste this manifest URL:
+
+```
+https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidian/releases/latest/download/module.json
+```
+
 ## Features
 
 | Feature | Status | How |
 | --- | --- | --- |
 | **Portals** | Walls you can see and walk through to somewhere else, seamlessly | Wall config, **Portal** section |
 | **Impossible spaces** | Movement cost works | Region behavior **Impossible Space** |
-| **Curved space** | Scene data helpers only | `scripts/curved-space/geometry.mjs` |
+| **Curved space** | Not yet: planned for a later version | |
 
 ### Portals
 
@@ -120,13 +132,16 @@ Planned: per-Scene hyperbolic or spherical geometry that changes distance measur
 
 ```
 module.json
+LICENSE
+.github/workflows/release.yml   builds module.zip for each GitHub Release
 scripts/
   main.mjs                 entry point, registers everything on init
   constants.mjs            module ID, behavior type names, logging
   settings.mjs
   portals/
     walls.mjs              Portal section of the wall config, exit picking, two-way links
-    teleport.mjs           portals into other Scenes
+    teleport.mjs           portals into other Scenes and Levels
+    annex.mjs              draws other Scenes and Levels for portal views of them
     eyes.mjs               where the viewer looks from
     geometry.mjs           portal walls and the transform between them
     pathing.mjs            routes movement through portals
@@ -140,4 +155,14 @@ lang/en.json
 styles/noneuclid.css
 ```
 
-The API is available at `game.modules.get("noneuclid").api`.
+The API is available at `game.modules.get("htb-noneuclidean").api`.
+
+## Releasing
+
+Bump `version` in `module.json`, commit, then publish a GitHub Release tagged `v<version>`
+(for example `v0.1.0`). The release workflow sets the version and download URL from the tag,
+builds `module.zip`, and attaches it and `module.json` to the release.
+
+## License
+
+[MIT](LICENSE)

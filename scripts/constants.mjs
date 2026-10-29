@@ -1,5 +1,5 @@
 /** The module ID, matching module.json and the module folder name. */
-export const MODULE_ID = "noneuclid";
+export const MODULE_ID = "htb-noneuclidean";
 
 /**
  * Fully qualified RegionBehavior sub-type names.

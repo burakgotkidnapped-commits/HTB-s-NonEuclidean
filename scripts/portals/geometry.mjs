@@ -12,7 +12,7 @@ import {MODULE_ID} from "../constants.mjs";
 
 /**
  * @typedef PortalFlags
- * The portal settings stored in a Wall's flags at `flags.noneuclid.portal`.
+ * The portal settings stored in a Wall's flags at `flags["htb-noneuclidean"].portal`.
  * @property {string|null} exit    UUID of the exit Wall
  * @property {boolean} flip        Come out of the exit heading the opposite way
  * @property {boolean} twoWay      Keep the exit Wall linked back to this one

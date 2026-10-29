@@ -1,14 +1,14 @@
 {
   "TYPES": {
     "RegionBehavior": {
-      "noneuclid": {
+      "htb-noneuclidean": {
         "impossibleSpace": "Impossible Space"
       }
     }
   },
   "HINTS": {
     "RegionBehavior": {
-      "noneuclid": {
+      "htb-noneuclidean": {
         "impossibleSpace": "The Region is bigger or smaller on the inside: movement through it costs more or less than its drawn size."
       }
     }

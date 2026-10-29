@@ -1,0 +1,35 @@
+# Builds module.zip when a GitHub Release is published, and attaches it and module.json to the release.
+# Tag releases as v<version>, for example v0.1.0. The tag sets the version and download URL in module.json.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set the version and download URL in module.json
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION="${TAG#v}"
+          jq --arg version "$VERSION" \
+             --arg download "https://github.com/$REPO/releases/download/$TAG/module.zip" \
+             '.version = $version | .download = $download' module.json > module.tmp.json
+          mv module.tmp.json module.json
+
+      - name: Build module.zip
+        run: zip -r module.zip module.json LICENSE README.md lang scripts styles
+
+      - name: Attach module.json and module.zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" module.json module.zip --clobber
