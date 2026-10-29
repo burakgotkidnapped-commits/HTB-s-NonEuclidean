@@ -1,5 +1,5 @@
 import {getPortalLinks, getViewedPortalLinks, planeSide} from "./geometry.mjs";
-import {asBoundary, createGhostSweep, getGhostCuts, getPortalCuts, isPast} from "./vision.mjs";
+import {asBoundary, createGhostSweep, getGhostCuts, getPortalCuts, isPast, reachLimit} from "./vision.mjs";
 import {MODULE_ID, log} from "../constants.mjs";
 
 /**
@@ -208,13 +208,15 @@ export function syncGhostLights() {
     for ( const link of links ) {
       if ( parent.link && !isPast(parent.link, link, from) ) continue;
       if ( link.distance(from) >= source.radius ) continue;
+      if ( !link.reaches(from, "light", source.data.externalRadius ?? 0) ) continue;
+      const reach = link.attenuatedRadius(from, "light", source.radius, source.data.externalRadius ?? 0) * link.scale;
 
       // One ghost per stretch of the portal the light actually reaches past walls
       for ( const [i, [t0, t1]] of link.visibleIntervals(from, source.shape).entries() ) {
         if ( wanted.size >= MAX_GHOSTS ) break;
         // Foundry rounds a source's position to the pixel, so place the ghost there from the start
         const node = {key: `${parent.key}.${link.id}.${i}`, root: parent.root, link, depth: parent.depth + 1,
-          from: roundOffPlane(link.apply(from), link.to)};
+          from: roundOffPlane(link.apply(from), link.to), reach};
         const ghost = updateGhost(node, source, from, t0, t1, links, allLinks);
         if ( !ghost ) {
           changed = true; // It may have been dropped
@@ -273,7 +275,7 @@ function roundOffPlane(point, plane) {
  * @param {PortalLink[]} allLinks         All portals in the Scene, to notice when they change
  * @returns {PointLightSource|null}
  */
-function updateGhost({key, root, link, from: origin}, parent, from, t0, t1, links, allLinks) {
+function updateGhost({key, root, link, from: origin, reach}, parent, from, t0, t1, links, allLinks) {
   // Fan the wedge out from exactly where the ghost is, so its edges meet the shadows the ghost casts.
   // With a portal that scales, the ghost's rounded position doesn't map back onto the parent's
   const wedge = link.wedge(link.transform.invert().apply(origin), t0, t1);
@@ -291,7 +293,7 @@ function updateGhost({key, root, link, from: origin}, parent, from, t0, t1, link
     seed: parent.animation.seed,
     animation: {type: animation.type, speed: animation.speed, intensity: animation.intensity, reverse: animation.reverse}
   });
-  const signature = JSON.stringify([data, t0, t1]);
+  const signature = JSON.stringify([data, t0, t1, reach]);
   let ghost = ghosts.get(key);
   if ( (ghost?.portalSignature === signature) && (ghost.portalLinks === allLinks) ) {
     ghost.portalChanged = false;
@@ -305,7 +307,7 @@ function updateGhost({key, root, link, from: origin}, parent, from, t0, t1, link
   // Ghost light starts exactly at the exit: anything before it would show from the exit's other side
   const boundary = asBoundary(link.applyPolygon(wedge));
   boundary._includeEdge = (a, b) => !link.isExitEdge(a, b); // Shine past the exit Wall even if it blocks
-  ghost.portalBoundaries = [boundary, ...getGhostCuts(origin, links, link, 0)];
+  ghost.portalBoundaries = [boundary, ...reachLimit(origin, reach), ...getGhostCuts(origin, links, link, 0)];
   ghost.portalClip = link.to;
   ghost.portalRoot = root;
   ghost.portalSignature = signature;

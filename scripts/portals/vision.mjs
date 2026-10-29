@@ -1,4 +1,4 @@
-import {getPortalLinks, getViewedPortalLinks, planeSide, seamOverlap, Similarity} from "./geometry.mjs";
+import {getPortalLinks, getSeenPortalLinks, planeSide, seamOverlap, Similarity} from "./geometry.mjs";
 import {getEyes} from "./eyes.mjs";
 import {MODULE_ID, log} from "../constants.mjs";
 
@@ -197,7 +197,7 @@ export function createGhostSweep(Sweep) {
  * @returns {PIXI.Polygon[]}
  */
 export function getPortalCuts(origin, {type="sight", radius=Infinity, overlap=seamOverlap()}={}) {
-  const links = getViewedPortalLinks();
+  const links = getSeenPortalLinks();
   if ( !links.length ) return [];
   const {x, y, width, height} = canvas.dimensions.rect;
   const canvasPolygon = new PIXI.Polygon(x, y, x + width, y, x + width, y + height, x, y + height);
@@ -296,8 +296,8 @@ export function isPast(through, link, origin) {
  * @returns {PIXI.Polygon[]}
  */
 export function getGhostCuts(origin, links, through, overlap=seamOverlap()) {
-  // The canvas, grown to take in the origin, which may lie beyond its edge
-  const {x, y, width, height} = canvas.dimensions.rect;
+  // The canvas beyond the exit, grown to take in the origin, which may lie beyond its edge
+  const {x, y, width, height} = through.exit.parent.dimensions.rect;
   const pad = canvas.dimensions.size;
   const x0 = Math.min(x, origin.x) - pad;
   const y0 = Math.min(y, origin.y) - pad;
@@ -326,6 +326,7 @@ export function getGhostCuts(origin, links, through, overlap=seamOverlap()) {
  * @property {Point} eye               Where a viewer looks from, mapped by the transform
  * @property {PIXI.Polygon[]} masks    Where the view shows, on the real canvas
  * @property {number} order            Views with a higher order are drawn over those with a lower one
+ * @property {PIXI.Polygon[]} seen     For a view of another Scene or Level, what the viewers see there, in its coordinates
  * @property {PortalView} [source]     For a copy in a loop, the rendered view it shows a shifted copy of
  * @property {Similarity} [shift]      For a copy, maps the real canvas onto where the source shows the same
  */
@@ -385,7 +386,8 @@ function repeatLoops(rendered, maxDepth, screen) {
   const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
   const known = new Map(rendered.map(view => [view.id, view]));
   const copies = [];
-  const queue = rendered.filter(view => view.depth >= maxDepth);
+  const level = canvas.level.id;
+  const queue = rendered.filter(view => (view.depth >= maxDepth) && !view.link.leadsAway(level));
   while ( queue.length && (copies.length < MAX_COPIES) ) {
     const parent = queue.shift();
     const loop = findLoop(parent.links);
@@ -454,7 +456,8 @@ export function getPortalViews() {
  * the portal views are drawn. Ghosts only compute their shapes here; see {@link showGhostVision}.
  */
 export function syncGhostVision() {
-  const links = getViewedPortalLinks();
+  const links = getSeenPortalLinks();
+  const level = canvas.level?.id;
   const eyes = links.length ? getEyes() : [];
   const maxDepth = game.settings.get(MODULE_ID, "portalDepth");
   const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
@@ -468,6 +471,7 @@ export function syncGhostVision() {
   const queue = [...roots];
   while ( queue.length ) {
     const parent = queue.shift();
+    if ( parent.link?.leadsAway(level) ) continue; // Views of another Scene or Level show no portals of their own
 
     // Past the depth setting, loops go on with copies of views already drawn (see repeatLoops).
     // Only where a copy would need what is off screen is the next view along the loop drawn in full.
@@ -479,6 +483,9 @@ export function syncGhostVision() {
     for ( const link of links ) {
       if ( loop && (link !== loop.next) ) continue;
       if ( parent.link && !isPast(parent.link, link, parent.from) ) continue;
+      const externalRadius = (parent.eye.source?.data.externalRadius ?? 0) * parent.transform.scale;
+      if ( !link.reaches(parent.from, "sight", externalRadius) ) continue;
+      const reach = link.attenuatedRadius(parent.from, "sight", canvas.dimensions.maxR, externalRadius) * link.scale;
 
       // One ghost per stretch of the portal the viewer can actually see past walls
       for ( const [i, [t0, t1]] of link.visibleIntervals(parent.from, parent.los).entries() ) {
@@ -494,15 +501,19 @@ export function syncGhostVision() {
           if ( found.size >= MAX_VIEWS ) continue;
           const transform = parent.transform.then(link.transform);
           view = {id, link, links: [...(parent.view?.links ?? []), link], depth: parent.depth + 1, transform,
-            eye: transform.apply(parent.eye), eyes: [], masks: [], order: 0};
+            eye: transform.apply(parent.eye), eyes: [], masks: [], seen: [], order: 0};
           found.set(id, view);
         }
         view.masks.push(mask);
         if ( !view.eyes.includes(parent.eye) ) view.eyes.push(parent.eye);
         const node = {key: `${parent.key}.${link.id}.${i}`, eye: parent.eye, view, link, depth: view.depth,
-          transform: view.transform, inverse: view.transform.invert(), from: link.apply(parent.from), children: [],
+          transform: view.transform, inverse: view.transform.invert(), from: link.apply(parent.from), reach, children: [],
           distance: Math.hypot(parent.from.x - link.from.center.x, parent.from.y - link.from.center.y)};
-        node.los = sightBeyond(node, parent.from, t0, t1, links);
+        if ( link.leadsAway(level) ) {
+          node.los = sightAcross(node, parent.from, t0, t1);
+          if ( node.los ) view.seen.push(node.los);
+        }
+        else node.los = sightBeyond(node, parent.from, t0, t1, links);
         wanted.add(node.key);
         parent.children.push(node);
         queue.push(node);
@@ -542,18 +553,12 @@ export function syncGhostVision() {
  */
 function sightBeyond(node, from, t0, t1, links) {
   const {key, link, eye, transform} = node;
-  const boundaries = () => {
-    // Let ghost sight start a little before the exit, so its soft edge doesn't show at the portal
-    const boundary = asBoundary(link.applyPolygon(union(link.wedge(from, t0, t1),
-      link.band(from, t0, t1, seamOverlap()))));
-    boundary._includeEdge = (a, b) => !link.isExitEdge(a, b); // See past the exit Wall even if it blocks
-    return [boundary, ...getGhostCuts(node.from, links, link)];
-  };
+  const boundaries = () => ghostBoundaries(node, from, t0, t1, links);
   const allLinks = getPortalLinks();
 
   const source = eye.source;
   if ( !source ) {
-    const signature = JSON.stringify([node.from.x, node.from.y, eye.elevation, t0, t1]);
+    const signature = JSON.stringify([node.from.x, node.from.y, eye.elevation, t0, t1, node.reach]);
     let sight = sights.get(key);
     if ( (sight?.signature !== signature) || (sight.links !== allLinks) ) {
       let los = null;
@@ -580,7 +585,7 @@ function sightBeyond(node, from, t0, t1, links) {
     externalRadius: source.data.externalRadius * scale
   };
   const signature = JSON.stringify([data.x, data.y, data.rotation, data.radius, data.lightRadius,
-    data.externalRadius, data.angle, data.visionMode, data.disabled, data.level, source.blinded, t0, t1]);
+    data.externalRadius, data.angle, data.visionMode, data.disabled, data.level, source.blinded, t0, t1, node.reach]);
   let ghost = ghosts.get(key);
   if ( (ghost?.portalSignature !== signature) || (ghost.portalLinks !== allLinks) ) {
     ghost?.destroy();
@@ -600,6 +605,67 @@ function sightBeyond(node, from, t0, t1, links) {
   }
   ghost.portalViewId = node.view.id;
   return ghost.los;
+}
+
+/**
+ * The shapes ghost sight beyond the last portal of a view must stay inside.
+ * @param {object} node            The view as seen by one viewer, through one stretch of the portal
+ * @param {Point} from             Where the viewer looks at the portal from
+ * @param {number} t0              The stretch of the portal seen
+ * @param {number} t1
+ * @param {PortalLink[]} links     The portals beyond the exit, whose own views show what lies past them
+ * @returns {PIXI.Polygon[]}
+ */
+function ghostBoundaries({link, from: origin, reach}, from, t0, t1, links) {
+  // Let ghost sight start a little before the exit, so its soft edge doesn't show at the portal
+  const boundary = asBoundary(link.applyPolygon(union(link.wedge(from, t0, t1),
+    link.band(from, t0, t1, seamOverlap()))));
+  boundary._includeEdge = (a, b) => !link.isExitEdge(a, b); // See past the exit Wall even if it blocks
+  return [boundary, ...reachLimit(origin, reach), ...getGhostCuts(origin, links, link)];
+}
+
+/**
+ * What a viewer sees through a portal into another Scene, or onto another Level of this one: the line
+ * of sight beyond the exit, blocked by the walls of the exit Level. Its portals aren't seen through:
+ * the view stops at them.
+ * @param {object} node            The view as seen by one viewer, through one stretch of the portal
+ * @param {Point} from             Where the viewer looks at the portal from
+ * @param {number} t0              The stretch of the portal seen
+ * @param {number} t1
+ * @returns {PIXI.Polygon|null}    The line of sight, in the exit Scene's coordinates
+ */
+function sightAcross(node, from, t0, t1) {
+  const {key, link, eye} = node;
+  const level = link.exitLevelDocument(canvas.level.id);
+  const scene = link.exit.parent;
+  const links = getPortalLinks(scene);
+  const bottom = level?.elevation.bottom;
+  const elevation = Number.isFinite(bottom) ? bottom : (eye.elevation ?? 0);
+  const signature = JSON.stringify([node.from.x, node.from.y, elevation, level?.id, t0, t1, node.reach]);
+  let sight = sights.get(key);
+  if ( (sight?.signature === signature) && (sight.links === links) ) return sight.los;
+  let los = null;
+  try {
+    scene.initializeEdges(); // Foundry only does this for the viewed Scene
+    const beyond = links.filter(l => l.entrance.includedInLevel(level.id));
+    los = GhostSweep.create({...node.from, elevation}, {type: "sight", level,
+      boundaryShapes: ghostBoundaries(node, from, t0, t1, beyond), portalClip: link.to});
+  } catch(err) {
+    log("error", `Failed to compute sight into ${scene.name} through a portal`, err);
+  }
+  sights.set(key, {signature, links, los});
+  return los;
+}
+
+/**
+ * The boundary shape that keeps a ghost within the reach a portal window leaves it.
+ * @param {Point} origin    Where the ghost sees or shines from
+ * @param {number} reach    How far it reaches, or Infinity
+ * @returns {PIXI.Polygon[]}    The boundary, or none if the reach is unlimited
+ */
+export function reachLimit(origin, reach) {
+  if ( !Number.isFinite(reach) ) return [];
+  return [asBoundary(new PIXI.Circle(origin.x, origin.y, Math.max(reach, 1)).toPolygon())];
 }
 
 /**
@@ -662,6 +728,7 @@ export function drawLitSeams(view) {
   const depth = (view?.depth ?? 0) + 1;
   for ( const child of views ) {
     if ( (child.depth !== depth) || (view && !child.id.startsWith(`${view.id}>`)) ) continue;
+    if ( child.link.leadsAway(canvas.level.id) ) continue; // Lit by the exit Level's lights, which aren't drawn yet
     const link = child.link;
     const back = link.transform.invert();
     const windows = child.masks.map(mask => transform.applyPolygon(mask).toClipperPoints({scalingFactor}));

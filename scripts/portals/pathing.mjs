@@ -1,6 +1,6 @@
 import {getPortalLinks} from "./geometry.mjs";
 import {isOnlySeenThroughPortals} from "./camera.mjs";
-import {MODULE_ID, log} from "../constants.mjs";
+import {CLIENT_ID, MODULE_ID, log} from "../constants.mjs";
 
 /**
  * How far before and after the portal plane, in pixels, the Token jumps.
@@ -53,14 +53,8 @@ function rewriteMovement(token, options) {
     const pivot = pivotOf(w);
     return {...w, x: Math.round(center.x - pivot.x), y: Math.round(center.y - pivot.y)};
   };
-  const traverse = (link, w) => {
-    const scaled = {...w, level: link.exitLevel(w.level)};
-    if ( link.scale !== 1 ) {
-      scaled.width = w.width * link.scale;
-      scaled.height = w.height * link.scale;
-    }
-    return place(scaled, link.apply(centerOf(w)));
-  };
+  // Tokens keep their size through portals, even ones that scale the space beyond them
+  const traverse = (link, w) => place({...w, level: link.exitLevel(w.level)}, link.apply(centerOf(w)));
 
   // Past a portal the grid need not line up with the grid at the entrance, so a Token sent to a grid
   // space would come out between spaces: snap it back onto the grid, unless that takes it back across a portal
@@ -74,7 +68,7 @@ function rewriteMovement(token, options) {
     const c0 = centerOf(w);
     const c1 = centerOf(snapped);
     const crosses = ({a, b}) => foundry.utils.lineSegmentIntersects(c0, c1, a, b);
-    return links.some(link => crosses(link.from) || (!link.crossScene && crosses(link.to))) ? w : snapped;
+    return links.some(link => crosses(link.from) || (!link.leadsAway(w.level) && crosses(link.to))) ? w : snapped;
   };
 
   // Every waypoint gets an explicit action: core fills a missing action from the previous waypoint,
@@ -135,10 +129,11 @@ function rewriteMovement(token, options) {
           break;
         }
 
-        // An exit in another Scene: walk up to the portal, then teleport once the movement is done
-        if ( link.crossScene ) {
+        // An exit in another Scene or on another Level: walk up to the portal, then teleport once the
+        // movement is done, and the view follows the Token there
+        if ( link.leadsAway(previous.level) ) {
           waypoints.push({...before, checkpoint: true});
-          teleport = {wall: link.entrance.uuid, point: along(JUMP_MARGIN), snap: drawnSnapped};
+          teleport = {wall: link.entrance.uuid, point: along(JUMP_MARGIN), snap: drawnSnapped, client: CLIENT_ID};
           crossings++;
           break;
         }

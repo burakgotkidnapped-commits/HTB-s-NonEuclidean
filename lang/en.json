@@ -53,7 +53,7 @@
       "TwoWay": "Two-Way",
       "TwoWayHint": "Make the exit wall a portal leading back here.",
       "Window": "Window",
-      "WindowHint": "Only look through the portal: sight and light pass, but Tokens can't walk through it.",
+      "WindowHint": "Work like a window: sight and light pass through the portal only within the proximity threshold, and Tokens can't walk through it.",
       "NoCrossScenePermission": "You do not have permission to move Tokens between Scenes."
     }
   }

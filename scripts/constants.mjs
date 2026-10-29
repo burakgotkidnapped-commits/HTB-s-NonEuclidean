@@ -24,3 +24,6 @@ export function log(level, ...args) {
   if ( (level === "debug") && !game.settings?.get(MODULE_ID, "debug") ) return;
   console[level === "debug" ? "log" : level](`${MODULE_ID} |`, ...args);
 }
+
+/** Identifies this client, apart from other clients logged in as the same user. */
+export const CLIENT_ID = foundry.utils.randomID();

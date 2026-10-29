@@ -6,6 +6,7 @@ import {followPortalJumps, resetCamera} from "./camera.mjs";
 import {patchVisionSources, syncGhostVision, clearGhostVision} from "./vision.mjs";
 import {patchLightSources, syncGhostLights, clearGhostLights} from "./lighting.mjs";
 import PortalWindows from "./renderer.mjs";
+import {registerAnnexes} from "./annex.mjs";
 import {log} from "../constants.mjs";
 
 export {PortalLink, getPortalLinks, getPortalFlags, isPortalDoor, isPortalOpen} from "./geometry.mjs";
@@ -58,6 +59,7 @@ export function init() {
   registerPathing();
   registerTeleports();
   registerWallPortals();
+  registerAnnexes();
 
   Hooks.once("setup", () => {
     patchVisionSources();

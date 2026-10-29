@@ -280,6 +280,49 @@ export class PortalLink {
   /* ---------------------------------------- */
 
   /**
+   * Is a viewer or light close enough to see or shine through the portal? A portal window works like
+   * a window Wall: sight and light only pass it within its proximity threshold. Other portals, and
+   * windows without a threshold, let everything through.
+   * @param {Point} point
+   * @param {"sight"|"light"} type
+   * @param {number} [externalRadius=0]    The source's own radius, which counts toward the threshold
+   * @returns {boolean}
+   */
+  reaches(point, type, externalRadius=0) {
+    const threshold = this.window ? this.entrance.threshold?.[type] : 0;
+    if ( !threshold ) return true;
+    const limit = threshold * this.entrance.parent.dimensions.distancePixels;
+    return Math.max(this.distance(point) - externalRadius, 0) < limit;
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * How far from a viewer or light it sees or shines through a portal window. Foundry attenuates sight
+   * and light through window Walls: right at the window they reach as far as ever, and the farther from
+   * it, the less they reach beyond it, until at the threshold they stop at the window.
+   * @param {Point} point
+   * @param {"sight"|"light"} type
+   * @param {number} radius                How far the source reaches without the window
+   * @param {number} [externalRadius=0]    The source's own radius, which counts toward the threshold
+   * @returns {number}    The distance from the point, or Infinity if the window doesn't attenuate
+   */
+  attenuatedRadius(point, type, radius, externalRadius=0) {
+    const threshold = this.window ? this.entrance.threshold?.[type] : 0;
+    if ( !threshold || !this.entrance.threshold.attenuation ) return Infinity;
+    const limit = threshold * this.entrance.parent.dimensions.distancePixels;
+    const inside = this.distance(point);
+    const outside = radius - inside;
+    if ( outside <= 0 ) return Infinity; // Doesn't reach past the window anyway
+    const p = 1 - (Math.max(inside - externalRadius, 0) / limit);
+    if ( p <= 0 ) return inside;
+    const a = (p / (2 * (1 - p))) * CONFIG.Wall.thresholdAttenuationMultiplier;
+    return inside + Math.min(a * limit, outside);
+  }
+
+  /* ---------------------------------------- */
+
+  /**
    * The stretches of the entrance Wall a viewer can actually see, unblocked by other walls.
    * @param {Point} eye
    * @param {PIXI.Polygon|null} los    The viewer's line of sight, or null to treat everything as visible
@@ -350,7 +393,7 @@ export class PortalLink {
    */
   wedge(eye, t0=0, t1=1, inset=0) {
     if ( !this.side(eye) ) return null;
-    const {width, height} = canvas.dimensions;
+    const {width, height} = this.entrance.parent.dimensions;
     const far = 2 * (width + height);
     const along = (p, distance) => {
       const dx = p.x - eye.x;
@@ -462,8 +505,47 @@ export class PortalLink {
    * @returns {string}
    */
   exitLevel(level) {
-    if ( !this.crossScene && this.exit.includedInLevel(level) ) return level;
+    if ( !this.leadsAway(level) ) return level;
     return this.exit.levels.first() ?? this.exit.parent.initialLevel?.id ?? level;
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * The elevation a Token comes out at, given the Level it entered from: as high above the exit Level's
+   * base as it was above the entrance Level's.
+   * @param {string} level
+   * @param {number} elevation
+   * @returns {number}
+   */
+  exitElevation(level, elevation) {
+    const from = this.entrance.parent.levels.get(level)?.elevation.base ?? 0;
+    const to = this.exitLevelDocument(level)?.elevation.base ?? from;
+    return to + (elevation - from);
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * Does the exit lead away from the given Level: into another Scene, or onto another Level of this
+   * one? Such links aren't seamless. Their views show a picture of the exit Level drawn apart from the
+   * canvas, and Tokens move there once they reach the portal.
+   * @param {string} level
+   * @returns {boolean}
+   */
+  leadsAway(level) {
+    return this.crossScene || !this.exit.includedInLevel(level);
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * The Level of the exit Scene seen through the portal from the given Level.
+   * @param {string} level
+   * @returns {Level|undefined}
+   */
+  exitLevelDocument(level) {
+    return this.exit.parent.levels.get(this.exitLevel(level));
   }
 
   /* ---------------------------------------- */
@@ -474,13 +556,14 @@ export class PortalLink {
    * @returns {boolean}
    */
   inLevel(level) {
-    return !this.crossScene && this.entrance.includedInLevel(level) && this.exit.includedInLevel(level);
+    return this.entrance.includedInLevel(level) && !this.leadsAway(level);
   }
 }
 
 /* ---------------------------------------- */
 
-let cache = null;
+/** @type {Map<Scene, PortalLink[]>} */
+const cache = new Map();
 
 /**
  * Get the portal links whose entrances are in a Scene.
@@ -489,8 +572,9 @@ let cache = null;
  */
 export function getPortalLinks(scene=canvas.scene) {
   if ( !scene ) return [];
-  if ( cache?.scene !== scene ) cache = {scene, links: buildLinks(scene)};
-  return cache.links;
+  let links = cache.get(scene);
+  if ( !links ) cache.set(scene, links = buildLinks(scene));
+  return links;
 }
 
 /**
@@ -502,9 +586,22 @@ export function getViewedPortalLinks() {
   return getPortalLinks().filter(link => link.inLevel(canvas.level.id));
 }
 
+/**
+ * Get the portal links seen through on the currently viewed Level: the seamless ones, and those whose
+ * exit is in another Scene or on another Level, which show it but move Tokens there instead of being
+ * walked through.
+ * @returns {PortalLink[]}
+ */
+export function getSeenPortalLinks() {
+  if ( !canvas.ready || !canvas.level ) return [];
+  const level = canvas.level.id;
+  return getPortalLinks().filter(link => link.inLevel(level)
+    || (link.leadsAway(level) && link.entrance.includedInLevel(level) && !!link.exitLevelDocument(level)));
+}
+
 /** Forget cached links, after portal Walls change. */
 export function invalidatePortalLinks() {
-  cache = null;
+  cache.clear();
 }
 
 /**

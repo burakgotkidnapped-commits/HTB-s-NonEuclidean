@@ -23,7 +23,10 @@ they share their door type, and opening, closing, or locking either end does the
 
 **Portal windows:** turn on **Window** and the portal can be seen and lit through but not walked
 through: the wall blocks movement, and a move that reaches it stops in front of it, even a move
-carried through another portal first. Two-way windows are windows at both ends. A window can also be
+carried through another portal first. Like Foundry's window walls, it lets sight and light through
+only up close: a viewer or light within the wall's proximity threshold (2 grid spaces by default, set
+in the wall's sight and light restrictions) sees or shines through the portal, and from farther away
+the window blocks like a wall. Two-way windows are windows at both ends. A window can also be
 a door, like shutters: closed it blocks everything, open it is a window.
 
 - **Walking:** a move that crosses the portal wall continues out of the exit wall as one uninterrupted
@@ -44,8 +47,9 @@ a door, like shutters: closed it blocks everything, open it is a window.
   screen changes.
 
 Walking straight through comes out heading the same way; **Flip** reverses that. If the exit wall
-runs at an angle to the portal, the passage turns to match. If it is longer or shorter, things are
-scaled through the portal, and the camera zooms to match.
+runs at an angle to the portal, the passage turns to match. If it is longer or shorter, the space beyond
+is scaled through the portal, and the camera zooms to match. Tokens never change size going through a
+portal: they keep their size in grid spaces.
 
 #### Example: a hallway that is long outside, short inside
 
@@ -60,8 +64,26 @@ From outside, the hallway still looks 10 squares long on the map.
 #### Another Scene
 
 Paste the UUID of a wall in another Scene as the exit (for example from
-`canvas.walls.controlled[0].document.uuid` in the console there). The Token walks up to the portal, then moves to the other Scene with the view kept on it. This one
-is a teleport, not seamless.
+`canvas.walls.controlled[0].document.uuid` in the console there). The Token walks up to the portal, then moves to the other Scene. This one
+is a teleport, not seamless. Everyone who had the Token selected goes to the other Scene with it,
+the view kept on it and the Token still selected.
+Looking at the portal shows the other Scene: the exit Level's background and foreground, its Tiles,
+and its Tokens, as far as the viewer sees past that Scene's walls. Tokens move there live as they are
+moved in that Scene. Its lights aren't drawn yet: the whole view is darkened by that Scene's darkness
+level instead, unless its global illumination lights it. Portals in the other Scene show nothing beyond
+them, and hidden Tokens there show only to the GM.
+
+#### Another Level
+
+A portal whose exit wall is on another Level of the same Scene works the same way as one into another
+Scene. Viewing the entrance's Level, you can pick the exit by clicking only if it shows on that Level;
+otherwise paste its UUID (view the exit's Level, select the wall, and copy
+`canvas.walls.controlled[0].document.uuid` from the console). Looking at the portal shows the exit Level:
+its background and foreground, Tiles, and Tokens, past its walls, darkened as described above. The Token
+walks up to the portal, then moves onto the exit Level at the matching point. It stays as high above that
+Level's base as it was above the base of the Level it left. Everyone who had the Token selected switches
+to the exit Level with it, the view kept on it. A portal is seamless only when both of its walls are on the
+Level being viewed.
 
 #### Limitations
 
@@ -71,7 +93,10 @@ is a teleport, not seamless.
   depth outside loops, portals show nothing beyond them.
 - Copies past the view depth show what the deepest drawn level sees. A Token's sight range is not
   counted again for each copy, so a limited sight range doesn't fade out the far copies.
-- Exits on another Level of the same Scene move the Token there, but views through them aren't drawn.
+- Views into another Scene or Level show everything in line of sight, however dark: sight range, vision
+  modes, and lights there aren't taken into account yet, so Tokens standing in the dark are seen too.
+- Switching Levels redraws the canvas, so crossing into another Level isn't seamless: the
+  screen reloads for a moment.
 - Darkness sources, and lights set not to be constrained by walls, don't pass through portals.
   Lights only pass through portals on the Level being viewed. At most 64 lights are carried
   through portals at once.

@@ -1,5 +1,6 @@
 import {planeSide} from "./geometry.mjs";
 import {getPortalViews, showGhostVision, hideGhostVision, drawLitSeams} from "./vision.mjs";
+import SceneAnnex from "./annex.mjs";
 
 /**
  * Portal windows: a live picture of the far side of each portal, drawn over the space beyond it.
@@ -12,6 +13,10 @@ import {getPortalViews, showGhostVision, hideGhostVision, drawLitSeams} from "./
  * other portals are drawn the same way, over the view they appear in.
  *
  * Windows sit above the scene and its fog but below the interface (borders, rulers, HUD).
+ *
+ * Views through portals into another Scene, or onto another Level of this one, can't render the canvas,
+ * which only holds the viewed Level. They render an annex of the exit Level instead (see annex.mjs), with
+ * the camera moved the same way.
  */
 export default class PortalWindows {
 
@@ -57,10 +62,20 @@ export default class PortalWindows {
 
   /* ---------------------------------------- */
 
+  /**
+   * The annexes of other Scenes and Levels seen through portals, by Level UUID.
+   * @type {Map<string, SceneAnnex>}
+   */
+  annexes = new Map();
+
+  /* ---------------------------------------- */
+
   /** Remove the window layer and free its textures. */
   tearDown() {
     for ( const w of this.windows.values() ) w.texture?.destroy(true);
     this.windows.clear();
+    for ( const annex of this.annexes.values() ) annex.destroy();
+    this.annexes.clear();
     const outline = this.#outline;
     if ( outline && !outline.destroyed && !canvas.interface.destroyed ) canvas.interface.addChildAt(outline, 0);
     this.#outline = undefined;
@@ -94,6 +109,16 @@ export default class PortalWindows {
       w.mask.destroy();
       this.windows.delete(id);
     }
+    const level = canvas.level.id;
+    const annexed = new Set();
+    for ( const view of views ) {
+      if ( view.link.leadsAway(level) ) annexed.add(view.link.exitLevelDocument(level)?.uuid);
+    }
+    for ( const [uuid, annex] of this.annexes ) {
+      if ( annexed.has(uuid) ) continue;
+      annex.destroy();
+      this.annexes.delete(uuid);
+    }
     if ( !active.size ) {
       drawLitSeams(null);
       return;
@@ -116,9 +141,34 @@ export default class PortalWindows {
     }
 
     for ( const view of views ) {
-      if ( !view.source ) this.#capture(view, this.windows.get(view.id).texture);
+      if ( view.source ) continue;
+      const texture = this.windows.get(view.id).texture;
+      if ( view.link.leadsAway(level) ) this.#captureAnnex(view, texture);
+      else this.#capture(view, texture);
     }
     drawLitSeams(null);
+  }
+
+  /* ---------------------------------------- */
+
+  /**
+   * Render the other Scene or Level seen through a portal into a texture.
+   * @param {PortalView} view
+   * @param {PIXI.RenderTexture} texture
+   */
+  #captureAnnex(view, texture) {
+    const level = view.link.exitLevelDocument(canvas.level.id);
+    if ( !level ) return;
+    let annex = this.annexes.get(level.uuid);
+    if ( !annex ) this.annexes.set(level.uuid, annex = new SceneAnnex(level));
+    const stage = canvas.stage;
+    const {transform} = view;
+    annex.render(canvas.app.renderer, texture, {
+      position: stage.position,
+      pivot: transform.apply(stage.pivot),
+      scale: stage.scale.x / transform.scale,
+      rotation: stage.rotation - transform.angle
+    }, view.seen);
   }
 
   /* ---------------------------------------- */
@@ -217,10 +267,11 @@ export default class PortalWindows {
       // be on the eye's side of the exit, as it is on the viewer's side of the entrance
       const p = link.apply(mesh.position);
       if ( planeSide(link.to, p) * near <= 0 ) continue;
+      // Tokens keep their size through portals, so the copy does too
       const through = {
         position: new PIXI.Point(p.x, p.y),
         rotation: mesh.rotation + link.angle,
-        scale: new PIXI.Point(mesh.scale.x * link.scale, mesh.scale.y * link.scale)
+        scale: mesh.scale.clone()
       };
       const real = !ghosts || PortalWindows.#isSeen(token, ghosts);
 

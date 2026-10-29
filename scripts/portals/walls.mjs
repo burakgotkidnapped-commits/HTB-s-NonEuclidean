@@ -18,7 +18,7 @@ export function registerWallPortals() {
   });
   Hooks.on("updateWall", (wall, changed, options, userId) => {
     if ( (userId === game.user.id) && (foundry.utils.hasProperty(changed, `flags.${MODULE_ID}.portal`)
-      || ("door" in changed)) ) linkBack(wall);
+      || ("door" in changed) || ("threshold" in changed)) ) linkBack(wall);
     if ( "ds" in changed ) syncDoorState(wall, userId);
   });
 }
@@ -28,8 +28,9 @@ export function registerWallPortals() {
 /**
  * Clean up portal settings in Wall data, and make portal Walls block nothing: what lies beyond a
  * portal is handled by the module, so sight and movement must pass the Wall itself. Portal windows
- * block movement, since nothing walks through them. Portal doors are the exception: closed, they
- * block like any door, and open, Foundry lets everything through.
+ * are set up like window Walls: they block movement, and let sight and light through only within
+ * their proximity threshold. Portal doors are the exception: closed, they block like any door, and
+ * open, Foundry lets everything through.
  * @param {WallDocument} wall    The Wall being created or updated, as it was before
  * @param {object} data          The Wall data or changes to read
  * @param {object} changes       The changes to write to
@@ -49,19 +50,32 @@ function preparePortalChanges(wall, data, changes) {
   const isWindow = setsWindow ? !!foundry.utils.getProperty(data, windowPath)
     : !!wall._source.flags[MODULE_ID]?.portal?.window;
 
+  // Give a window the same threshold as Foundry's window Walls, unless it has one. A window door keeps
+  // it too, for when it is open: the module then holds sight and light to it
+  if ( isWindow ) {
+    const threshold = {...wall._source.threshold, ...data.threshold};
+    const distance = (wall.parent ?? canvas.scene).dimensions.distance;
+    if ( !threshold.sight && !threshold.light ) changes.threshold = {...changes.threshold, attenuation: true};
+    if ( !threshold.sight ) changes.threshold = {...changes.threshold, sight: 2 * distance};
+    if ( !threshold.light ) changes.threshold = {...changes.threshold, light: 2 * distance};
+  }
+
   const types = {move: CONST.WALL_MOVEMENT_TYPES, sight: CONST.WALL_SENSE_TYPES,
     light: CONST.WALL_SENSE_TYPES, sound: CONST.WALL_SENSE_TYPES};
   if ( (data.door ?? wall._source.door) === CONST.WALL_DOOR_TYPES.NONE ) {
-    for ( const [key, type] of Object.entries(types) ) {
-      changes[key] = ((key === "move") && isWindow) ? type.NORMAL : type.NONE;
-    }
+    const S = CONST.WALL_SENSE_TYPES;
+    if ( isWindow ) Object.assign(changes, {move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: S.PROXIMITY,
+      light: S.PROXIMITY, sound: S.NORMAL});
+    else for ( const key of Object.keys(types) ) changes[key] = S.NONE;
     return;
   }
 
-  // A portal becoming a door had everything set to pass through it, so make it block while closed
+  // A portal becoming a door had everything set to pass through it, or through it up close for a
+  // window, so make it block while closed
   if ( wall._source.door !== CONST.WALL_DOOR_TYPES.NONE ) return;
   for ( const [key, type] of Object.entries(types) ) {
-    if ( (data[key] ?? wall._source[key]) === type.NONE ) changes[key] = type.NORMAL;
+    const value = data[key] ?? wall._source[key];
+    if ( (value === type.NONE) || (value === type.PROXIMITY) ) changes[key] = type.NORMAL;
   }
 }
 
@@ -82,6 +96,10 @@ async function linkBack(wall) {
     changes.flags = {[MODULE_ID]: {portal: {exit: wall.uuid, flip: flags.flip, twoWay: true, window: flags.window}}};
   }
   if ( exit.door !== wall.door ) Object.assign(changes, {door: wall.door, ds: wall.ds});
+  if ( flags.window && ["sight", "light", "attenuation"].some(k => exit.threshold[k] !== wall.threshold[k]) ) {
+    changes.threshold = {sight: wall.threshold.sight, light: wall.threshold.light,
+      attenuation: wall.threshold.attenuation};
+  }
   if ( foundry.utils.isEmpty(changes) || !exit.canUserModify(game.user, "update") ) return;
   await exit.update(changes);
 }
