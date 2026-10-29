@@ -1,5 +1,3 @@
-# Builds module.zip when a GitHub Release is published, and attaches it and module.json to the release.
-# Tag releases as v<version>, for example v0.1.0. The tag sets the version and download URL in module.json.
 name: Release
 
 on:
