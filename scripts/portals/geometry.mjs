@@ -497,67 +497,6 @@ export class PortalLink {
     return new PIXI.Rectangle(x, y, Math.abs(b.x - a.x) + (2 * padding), Math.abs(b.y - a.y) + (2 * padding));
   }
 
-  /* ---------------------------------------- */
-
-  /**
-   * The Level a Token lands on when it exits, given the Level it entered from.
-   * @param {string} level
-   * @returns {string}
-   */
-  exitLevel(level) {
-    if ( !this.leadsAway(level) ) return level;
-    return this.exit.levels.first() ?? this.exit.parent.initialLevel?.id ?? level;
-  }
-
-  /* ---------------------------------------- */
-
-  /**
-   * The elevation a Token comes out at, given the Level it entered from: as high above the exit Level's
-   * base as it was above the entrance Level's.
-   * @param {string} level
-   * @param {number} elevation
-   * @returns {number}
-   */
-  exitElevation(level, elevation) {
-    const from = this.entrance.parent.levels.get(level)?.elevation.base ?? 0;
-    const to = this.exitLevelDocument(level)?.elevation.base ?? from;
-    return to + (elevation - from);
-  }
-
-  /* ---------------------------------------- */
-
-  /**
-   * Does the exit lead away from the given Level: into another Scene, or onto another Level of this
-   * one? Such links aren't seamless. Their views show a picture of the exit Level drawn apart from the
-   * canvas, and Tokens move there once they reach the portal.
-   * @param {string} level
-   * @returns {boolean}
-   */
-  leadsAway(level) {
-    return this.crossScene || !this.exit.includedInLevel(level);
-  }
-
-  /* ---------------------------------------- */
-
-  /**
-   * The Level of the exit Scene seen through the portal from the given Level.
-   * @param {string} level
-   * @returns {Level|undefined}
-   */
-  exitLevelDocument(level) {
-    return this.exit.parent.levels.get(this.exitLevel(level));
-  }
-
-  /* ---------------------------------------- */
-
-  /**
-   * Is this link seamless on the given Level, with both ends on it?
-   * @param {string} level
-   * @returns {boolean}
-   */
-  inLevel(level) {
-    return this.entrance.includedInLevel(level) && !this.leadsAway(level);
-  }
 }
 
 /* ---------------------------------------- */
@@ -578,25 +517,22 @@ export function getPortalLinks(scene=canvas.scene) {
 }
 
 /**
- * Get the seamless portal links on the currently viewed Level.
+ * Get the seamless portal links in the viewed Scene: those whose exit is in it too.
  * @returns {PortalLink[]}
  */
 export function getViewedPortalLinks() {
-  if ( !canvas.ready || !canvas.level ) return [];
-  return getPortalLinks().filter(link => link.inLevel(canvas.level.id));
+  if ( !canvas.ready ) return [];
+  return getPortalLinks().filter(link => !link.crossScene);
 }
 
 /**
- * Get the portal links seen through on the currently viewed Level: the seamless ones, and those whose
- * exit is in another Scene or on another Level, which show it but move Tokens there instead of being
- * walked through.
+ * Get the portal links seen through in the viewed Scene: the seamless ones, and those whose exit is in
+ * another Scene, which show it but move Tokens there instead of being walked through.
  * @returns {PortalLink[]}
  */
 export function getSeenPortalLinks() {
-  if ( !canvas.ready || !canvas.level ) return [];
-  const level = canvas.level.id;
-  return getPortalLinks().filter(link => link.inLevel(level)
-    || (link.leadsAway(level) && link.entrance.includedInLevel(level) && !!link.exitLevelDocument(level)));
+  if ( !canvas.ready ) return [];
+  return getPortalLinks();
 }
 
 /** Forget cached links, after portal Walls change. */

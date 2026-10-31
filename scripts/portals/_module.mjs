@@ -3,7 +3,7 @@ import {registerPathing} from "./pathing.mjs";
 import {registerTeleports} from "./teleport.mjs";
 import {registerWallPortals} from "./walls.mjs";
 import {followPortalJumps, resetCamera} from "./camera.mjs";
-import {patchVisionSources, syncGhostVision, clearGhostVision} from "./vision.mjs";
+import {patchVisionSources, syncGhostVision, clearGhostVision, invalidateSceneEdges} from "./vision.mjs";
 import {patchLightSources, syncGhostLights, clearGhostLights} from "./lighting.mjs";
 import PortalWindows from "./renderer.mjs";
 import {registerAnnexes} from "./annex.mjs";
@@ -87,6 +87,7 @@ export function init() {
   // moved. Exits can be in other Scenes, so changes anywhere count.
   const onChange = () => {
     invalidatePortalLinks();
+    invalidateSceneEdges();
     if ( canvas.ready ) canvas.perception.update({initializeVision: true, initializeLighting: true});
   };
   for ( const action of ["create", "update", "delete"] ) Hooks.on(`${action}Wall`, onChange);

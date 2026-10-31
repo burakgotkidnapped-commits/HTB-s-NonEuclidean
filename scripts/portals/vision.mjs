@@ -95,12 +95,20 @@ export function patchVisionSources() {
 export function createGhostSweep(Sweep) {
   return class PortalGhostSweep extends Sweep {
     /**
+     * The dimensions of the Scene the sweep is in: another Scene seen through a portal, or the viewed one.
+     * @returns {SceneDimensions}
+     */
+    get #dimensions() {
+      return this.config.portalScene?.dimensions ?? canvas.dimensions;
+    }
+
+    /**
      * The canvas, grown to take in the origin. Ghosts often look from the scene's edge or beyond it,
      * where the scene's own bounds would cut through or miss the origin and break the sweep.
      * @returns {PIXI.Rectangle}
      */
     #getBounds() {
-      const {x, y, width, height} = this.scene.dimensions.rect;
+      const {x, y, width, height} = this.#dimensions.rect;
       const pad = canvas.dimensions.size;
       const x0 = Math.min(x, this.origin.x) - pad;
       const y0 = Math.min(y, this.origin.y) - pad;
@@ -115,7 +123,7 @@ export function createGhostSweep(Sweep) {
      */
     compute() {
       const {x, y} = this.origin;
-      const {width, height} = this.scene.dimensions;
+      const {width, height} = this.#dimensions;
       const {angle, radius, externalRadius} = this.config;
       const degenerate = (radius === 0) || ((angle === 0) && (externalRadius === 0));
       if ( degenerate || ((x >= 0) && (x <= width) && (y >= 0) && (y <= height)) ) return super.compute();
@@ -138,15 +146,26 @@ export function createGhostSweep(Sweep) {
 
     /** @override */
     _identifyEdges() {
-      super._identifyEdges();
+      // The edges of another Scene aren't on the canvas: test its walls as the sweep tests the canvas's
+      const scene = this.config.portalScene;
+      let innerBounds;
+      if ( scene ) {
+        const edgeTypes = this._determineEdgeTypes(this.config.type, this.config.priority ?? 0, this.config);
+        const edges = getSceneEdges(scene);
+        for ( const edge of edges ) {
+          if ( (edge.type === "wall") && this._testEdgeInclusion(edge, edgeTypes) ) this.edges.add(edge.clone());
+        }
+        innerBounds = edges.filter(edge => edge.type === "innerBounds");
+      }
+      else {
+        super._identifyEdges();
+        innerBounds = [...canvas.edges.values()].filter(edge => edge.type === "innerBounds");
+      }
       for ( const edge of [...this.edges] ) if ( edge.type.endsWith("Bounds") ) this.edges.delete(edge);
 
       // The scene's edge blocks sight like a wall, as it does for Tokens inside the scene, and is cut
       // at the exit like one. Bounds around the origin close off the polygon.
-      for ( const side of ["top", "right", "bottom", "left"] ) {
-        const edge = this.level.edges.get(`innerBounds.${side}`);
-        if ( edge ) this.edges.add(edge.clone());
-      }
+      for ( const edge of innerBounds ) this.edges.add(edge.clone());
       const r = this.#getBounds();
       const corners = [{x: r.x, y: r.y}, {x: r.right, y: r.y}, {x: r.right, y: r.bottom}, {x: r.x, y: r.bottom}];
       for ( const [i, a] of corners.entries() ) {
@@ -175,13 +194,55 @@ export function createGhostSweep(Sweep) {
         const t = sa / (sa - sb);
         const cut = {x: edge.a.x + ((edge.b.x - edge.a.x) * t), y: edge.a.y + ((edge.b.y - edge.a.y) * t)};
         const trimmed = new edge.constructor(inA ? edge.a : cut, inB ? edge.b : cut, edge);
-        trimmed.intersections = Object.fromEntries(Object.entries(edge.intersections).map(([level, list]) => {
-          return [level, list.filter(({intersection: i}) => beyond(i))];
-        }));
+        trimmed.intersections = edge.intersections.filter(({intersection: i}) => beyond(i));
         this.edges.add(trimmed);
       }
     }
   };
+}
+
+/* ---------------------------------------- */
+
+/**
+ * The edges of Scenes other than the viewed one, which portal views into them are blocked by.
+ * @type {Map<Scene, Edge[]>}
+ */
+const sceneEdges = new Map();
+
+/**
+ * The edges of a Scene that isn't on the canvas: its Walls and the edge of the Scene, with their
+ * intersections, built as Foundry builds those of the viewed Scene.
+ * @param {Scene} scene
+ * @returns {Edge[]}
+ */
+function getSceneEdges(scene) {
+  let edges = sceneEdges.get(scene);
+  if ( edges ) return edges;
+  const {Edge} = foundry.canvas.geometry.edges;
+  const S = CONST.WALL_SENSE_TYPES;
+  const M = CONST.WALL_MOVEMENT_TYPES;
+  edges = [];
+  for ( const wall of scene.walls ) {
+    const [x0, y0, x1, y1] = wall.c;
+    const open = (wall.door !== CONST.WALL_DOOR_TYPES.NONE) && (wall.ds === CONST.WALL_DOOR_STATES.OPEN);
+    edges.push(new Edge({x: x0, y: y0}, {x: x1, y: y1}, {id: wall.id, type: "wall", direction: wall.dir,
+      light: open ? S.NONE : wall.light, sight: open ? S.NONE : wall.sight, sound: open ? S.NONE : wall.sound,
+      move: open ? M.NONE : wall.move, threshold: wall.threshold}));
+  }
+  const r = scene.dimensions.sceneRect;
+  const corners = [{x: r.x, y: r.y}, {x: r.right, y: r.y}, {x: r.right, y: r.bottom}, {x: r.x, y: r.bottom}];
+  for ( const [i, a] of corners.entries() ) {
+    edges.push(new Edge(a, corners[(i + 1) % 4], {id: `noneuclid.innerBounds.${i}`, type: "innerBounds",
+      light: S.NORMAL, sight: S.NORMAL, sound: S.NORMAL, move: M.NORMAL}));
+  }
+  Edge.identifyEdgeIntersections(edges);
+  sceneEdges.set(scene, edges);
+  return edges;
+}
+
+/** Forget the edges of other Scenes, after Walls change. */
+export function invalidateSceneEdges() {
+  sceneEdges.clear();
 }
 
 /* ---------------------------------------- */
@@ -208,7 +269,7 @@ export function getPortalCuts(origin, {type="sight", radius=Infinity, overlap=se
 
     // Only cut where the portal is actually in view, so walls elsewhere keep working as usual
     los ??= CONFIG.Canvas.polygonBackends[type].create({x: origin.x, y: origin.y, elevation: origin.elevation ?? 0},
-      {type, level: canvas.level});
+      {type});
     for ( const [t0, t1] of link.visibleIntervals(origin, los) ) {
       const wedge = link.wedge(origin, t0, t1, -overlap); // Let real sight reach a little past the portal
       if ( wedge ) cuts.push(asBoundary(subtract(canvasPolygon, wedge, origin)));
@@ -326,7 +387,7 @@ export function getGhostCuts(origin, links, through, overlap=seamOverlap()) {
  * @property {Point} eye               Where a viewer looks from, mapped by the transform
  * @property {PIXI.Polygon[]} masks    Where the view shows, on the real canvas
  * @property {number} order            Views with a higher order are drawn over those with a lower one
- * @property {PIXI.Polygon[]} seen     For a view of another Scene or Level, what the viewers see there, in its coordinates
+ * @property {PIXI.Polygon[]} seen     For a view of another Scene, what the viewers see there, in its coordinates
  * @property {PortalView} [source]     For a copy in a loop, the rendered view it shows a shifted copy of
  * @property {Similarity} [shift]      For a copy, maps the real canvas onto where the source shows the same
  */
@@ -386,8 +447,7 @@ function repeatLoops(rendered, maxDepth, screen) {
   const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
   const known = new Map(rendered.map(view => [view.id, view]));
   const copies = [];
-  const level = canvas.level.id;
-  const queue = rendered.filter(view => (view.depth >= maxDepth) && !view.link.leadsAway(level));
+  const queue = rendered.filter(view => (view.depth >= maxDepth) && !view.link.crossScene);
   while ( queue.length && (copies.length < MAX_COPIES) ) {
     const parent = queue.shift();
     const loop = findLoop(parent.links);
@@ -457,7 +517,6 @@ export function getPortalViews() {
  */
 export function syncGhostVision() {
   const links = getSeenPortalLinks();
-  const level = canvas.level?.id;
   const eyes = links.length ? getEyes() : [];
   const maxDepth = game.settings.get(MODULE_ID, "portalDepth");
   const scalingFactor = CONST.CLIPPER_SCALING_FACTOR;
@@ -471,7 +530,7 @@ export function syncGhostVision() {
   const queue = [...roots];
   while ( queue.length ) {
     const parent = queue.shift();
-    if ( parent.link?.leadsAway(level) ) continue; // Views of another Scene or Level show no portals of their own
+    if ( parent.link?.crossScene ) continue; // Views of another Scene show no portals of their own
 
     // Past the depth setting, loops go on with copies of views already drawn (see repeatLoops).
     // Only where a copy would need what is off screen is the next view along the loop drawn in full.
@@ -509,7 +568,7 @@ export function syncGhostVision() {
         const node = {key: `${parent.key}.${link.id}.${i}`, eye: parent.eye, view, link, depth: view.depth,
           transform: view.transform, inverse: view.transform.invert(), from: link.apply(parent.from), reach, children: [],
           distance: Math.hypot(parent.from.x - link.from.center.x, parent.from.y - link.from.center.y)};
-        if ( link.leadsAway(level) ) {
+        if ( link.crossScene ) {
           node.los = sightAcross(node, parent.from, t0, t1);
           if ( node.los ) view.seen.push(node.los);
         }
@@ -563,7 +622,7 @@ function sightBeyond(node, from, t0, t1, links) {
     if ( (sight?.signature !== signature) || (sight.links !== allLinks) ) {
       let los = null;
       try {
-        los = GhostSweep.create({...node.from, elevation: eye.elevation ?? 0}, {type: "sight", level: canvas.level,
+        los = GhostSweep.create({...node.from, elevation: eye.elevation ?? 0}, {type: "sight",
           boundaryShapes: boundaries(), portalClip: link.to});
       } catch(err) {
         log("error", "Failed to compute sight through a portal", err);
@@ -585,7 +644,7 @@ function sightBeyond(node, from, t0, t1, links) {
     externalRadius: source.data.externalRadius * scale
   };
   const signature = JSON.stringify([data.x, data.y, data.rotation, data.radius, data.lightRadius,
-    data.externalRadius, data.angle, data.visionMode, data.disabled, data.level, source.blinded, t0, t1, node.reach]);
+    data.externalRadius, data.angle, data.visionMode, data.disabled, source.blinded, t0, t1, node.reach]);
   let ghost = ghosts.get(key);
   if ( (ghost?.portalSignature !== signature) || (ghost.portalLinks !== allLinks) ) {
     ghost?.destroy();
@@ -625,9 +684,8 @@ function ghostBoundaries({link, from: origin, reach}, from, t0, t1, links) {
 }
 
 /**
- * What a viewer sees through a portal into another Scene, or onto another Level of this one: the line
- * of sight beyond the exit, blocked by the walls of the exit Level. Its portals aren't seen through:
- * the view stops at them.
+ * What a viewer sees through a portal into another Scene: the line of sight beyond the exit, blocked
+ * by the walls of the exit Scene. Its portals aren't seen through: the view stops at them.
  * @param {object} node            The view as seen by one viewer, through one stretch of the portal
  * @param {Point} from             Where the viewer looks at the portal from
  * @param {number} t0              The stretch of the portal seen
@@ -636,20 +694,16 @@ function ghostBoundaries({link, from: origin, reach}, from, t0, t1, links) {
  */
 function sightAcross(node, from, t0, t1) {
   const {key, link, eye} = node;
-  const level = link.exitLevelDocument(canvas.level.id);
   const scene = link.exit.parent;
   const links = getPortalLinks(scene);
-  const bottom = level?.elevation.bottom;
-  const elevation = Number.isFinite(bottom) ? bottom : (eye.elevation ?? 0);
-  const signature = JSON.stringify([node.from.x, node.from.y, elevation, level?.id, t0, t1, node.reach]);
+  const elevation = eye.elevation ?? 0;
+  const signature = JSON.stringify([node.from.x, node.from.y, elevation, t0, t1, node.reach]);
   let sight = sights.get(key);
   if ( (sight?.signature === signature) && (sight.links === links) ) return sight.los;
   let los = null;
   try {
-    scene.initializeEdges(); // Foundry only does this for the viewed Scene
-    const beyond = links.filter(l => l.entrance.includedInLevel(level.id));
-    los = GhostSweep.create({...node.from, elevation}, {type: "sight", level,
-      boundaryShapes: ghostBoundaries(node, from, t0, t1, beyond), portalClip: link.to});
+    los = GhostSweep.create({...node.from, elevation}, {type: "sight", portalScene: scene,
+      boundaryShapes: ghostBoundaries(node, from, t0, t1, links), portalClip: link.to});
   } catch(err) {
     log("error", `Failed to compute sight into ${scene.name} through a portal`, err);
   }
@@ -692,7 +746,7 @@ function screenPolygon() {
  * Ghosts are never added to the active vision sources, so the real map stays exactly as the
  * Token sees it, walls and all.
  */
-const overlays = {sight: null, light: null, realLightMask: null, seams: null};
+const overlays = {sight: null, light: null, realLightMask: null, lightMaskSwapped: false, seams: null};
 
 /* ---------------------------------------- */
 
@@ -728,7 +782,7 @@ export function drawLitSeams(view) {
   const depth = (view?.depth ?? 0) + 1;
   for ( const child of views ) {
     if ( (child.depth !== depth) || (view && !child.id.startsWith(`${view.id}>`)) ) continue;
-    if ( child.link.leadsAway(canvas.level.id) ) continue; // Lit by the exit Level's lights, which aren't drawn yet
+    if ( child.link.crossScene ) continue; // Lit by the exit Scene's lights, which aren't drawn yet
     const link = child.link;
     const back = link.transform.invert();
     const windows = child.masks.map(mask => transform.applyPolygon(mask).toClipperPoints({scalingFactor}));
@@ -825,12 +879,17 @@ export function showGhostVision(view) {
 
   overlays.sight.renderable = true;
   vision.sight.renderable = false;
-  const realLightMask = overlays.realLightMask = vision.light.mask;
+  const realLightMask = overlays.realLightMask = vision.light.mask ?? null;
+  overlays.lightMaskSwapped = true;
   vision.light.mask = overlays.light;
-  realLightMask.renderable = false; // No longer a mask, so it would draw as a plain shape
+  if ( realLightMask ) {
+    realLightMask.renderable = false; // No longer a mask, so it would draw as a plain shape
 
-  // Foundry reaches these through the mask while rendering
-  for ( const key of ["preview", "shared", "surfaceExposure"] ) overlays.light[key] = realLightMask[key];
+    // Foundry reaches these through the mask while rendering
+    for ( const key of ["preview", "shared", "surfaceExposure"] ) {
+      if ( key in realLightMask ) overlays.light[key] = realLightMask[key];
+    }
+  }
   canvas.masks.vision.renderDirty = true;
   showVisionEffects(shown);
   return shown;
@@ -893,9 +952,10 @@ function hideVisionEffects() {
 export function hideGhostVision() {
   hideVisionEffects();
   const vision = canvas.visibility.vision;
-  if ( overlays.realLightMask ) {
+  if ( overlays.lightMaskSwapped ) {
     if ( vision?.light && !vision.light.destroyed ) vision.light.mask = overlays.realLightMask;
     overlays.realLightMask = null;
+    overlays.lightMaskSwapped = false;
   }
   if ( vision?.sight && !vision.sight.destroyed ) vision.sight.renderable = true;
   if ( overlays.sight ) overlays.sight.renderable = false;
@@ -910,6 +970,7 @@ export function clearGhostVision() {
   for ( const ghost of ghosts.values() ) ghost.destroy();
   ghosts.clear();
   sights.clear();
+  sceneEdges.clear();
   views = [];
   for ( const key of ["sight", "light", "seams"] ) {
     overlays[key]?.destroy();

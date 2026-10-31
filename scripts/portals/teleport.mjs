@@ -2,9 +2,9 @@ import {CLIENT_ID, MODULE_ID, log} from "../constants.mjs";
 import {PortalLink, getPortalFlags, isPortalOpen} from "./geometry.mjs";
 
 /**
- * Portals whose exit is in another Scene, or on another Level of this one. Path routing (see pathing.mjs)
- * stops the Token just before the portal Wall and marks the update; once it arrives, the Token is moved
- * to the matching point beyond the exit. Every client controlling the Token follows it there.
+ * Portals whose exit is in another Scene. Path routing (see pathing.mjs) stops the Token just before the
+ * portal Wall and marks the update; once it arrives, a copy of the Token is placed at the matching point
+ * beyond the exit. Every client controlling the Token follows it there.
  */
 export function registerTeleports() {
   Hooks.on("updateToken", (token, changed, options, userId) => {
@@ -27,7 +27,7 @@ export function registerTeleports() {
 }
 
 /**
- * Tokens on their way through a portal into another Scene or Level that this client controls, by UUID.
+ * Tokens on their way through a portal into another Scene that this client controls, by UUID.
  * @type {Set<string>}
  */
 const followers = new Set();
@@ -56,21 +56,20 @@ function getLink(uuid) {
  */
 async function teleportThroughPortal(token, {wall: uuid, point, snap}) {
   const link = getLink(uuid);
-  if ( !link ) return;
-  if ( link.crossScene && !(game.user.can("TOKEN_CREATE") && game.user.can("TOKEN_DELETE")) ) {
+  if ( !link?.crossScene ) return;
+  if ( !(game.user.can("TOKEN_CREATE") && game.user.can("TOKEN_DELETE")) ) {
     ui.notifications.warn("NONEUCLID.WallPortal.NoCrossScenePermission", {localize: true});
     return;
   }
 
   // Let the Token finish walking up to the portal
-  if ( token.rendered && token.object.movementAnimationPromise ) {
-    await game.raceWithWindowHidden(token.object.movementAnimationPromise);
-  }
+  const animation = token.rendered ? token.object.movementAnimationPromise : null;
+  if ( animation ) await (game.raceWithWindowHidden?.(animation) ?? animation);
 
   // The Token keeps its size in grid spaces, measured on the exit Scene's grid, which it isn't in yet
   const data = token.toObject();
   const {width, height} = data;
-  const {getCenterPoint, getSize} = foundry.documents.BaseToken.prototype;
+  const {getCenterPoint, getSize} = foundry.documents.TokenDocument.prototype;
   const pivot = getCenterPoint.call({parent: link.exit.parent, getSize}, {x: 0, y: 0, elevation: 0, width, height,
     shape: data.shape});
   const center = link.apply(point);
@@ -79,21 +78,11 @@ async function teleportThroughPortal(token, {wall: uuid, point, snap}) {
   const exit = {
     x: Math.round(position.x),
     y: Math.round(position.y),
-    elevation: link.exitElevation(data.level, data.elevation),
-    level: link.exitLevel(data.level),
     rotation: (data.rotation + Math.toDegrees(link.angle)) % 360
   };
   const passage = {from: token.uuid, wall: uuid};
 
-  // On another Level of the same Scene, the Token just moves there
-  if ( !link.crossScene ) {
-    log("debug", `${token.name} passes through portal to Level ${exit.level}`);
-    await token.move({...exit, action: "displace", snapped: snap}, {animate: false,
-      constrainOptions: {ignoreWalls: true}, [MODULE_ID]: {passage}});
-    return;
-  }
-
-  // In another Scene, place a copy of the Token beyond the exit, then remove the original
+  // Place a copy of the Token beyond the exit, then remove the original
   Object.assign(data, exit);
   delete data._id;
   delete data._movementHistory;
@@ -105,8 +94,8 @@ async function teleportThroughPortal(token, {wall: uuid, point, snap}) {
 /* ---------------------------------------- */
 
 /**
- * Follow a Token this client controlled through a portal into another Scene or Level. The view moves
- * with it, so it stays where it was on screen.
+ * Follow a Token this client controlled through a portal into another Scene. The view moves with it,
+ * so it stays where it was on screen.
  * @param {TokenDocument} token                     The Token beyond the exit
  * @param {{from: string, wall: string}} passage    The Token it replaces, or itself, and the entrance Wall
  */
@@ -115,13 +104,14 @@ async function followThroughPortal(token, {wall}) {
   if ( !link || (link.exit.parent !== token.parent) || (canvas.scene !== link.entrance.parent) ) return;
   const view = {...link.apply(canvas.stage.pivot), scale: canvas.stage.scale.x / link.scale};
   try {
-    // Core may already be switching the view to the Token's new Level
     if ( canvas.loading ) await new Promise(resolve => Hooks.once("canvasReady", resolve));
-    await token.parent.view({level: token.level, controlledTokens: [token.id]});
+    await token.parent.view();
   } catch(err) {
     log("warn", `Failed to follow ${token.name} into ${token.parent.name}`, err);
     return;
   }
+  if ( canvas.scene !== token.parent ) return;
+  token.object?.control({releaseOthers: true});
   canvas.pan(view);
 }
 
@@ -145,7 +135,7 @@ function snapBeyondExit(link, center, {width, height, shape}, pivot) {
   const normal = {x: (-direction.y * side) / length, y: (direction.x * side) / length};
 
   // Snap on the exit Scene's grid, which the Token isn't in yet
-  const getSnappedPosition = foundry.documents.BaseToken.prototype.getSnappedPosition;
+  const getSnappedPosition = foundry.documents.TokenDocument.prototype.getSnappedPosition;
   for ( const step of [0, 0.5, 1, 1.5] ) {
     const d = step * scene.grid.size;
     const {x, y} = getSnappedPosition.call({parent: scene}, {x: center.x + (normal.x * d) - pivot.x,

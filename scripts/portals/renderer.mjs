@@ -14,9 +14,8 @@ import SceneAnnex from "./annex.mjs";
  *
  * Windows sit above the scene and its fog but below the interface (borders, rulers, HUD).
  *
- * Views through portals into another Scene, or onto another Level of this one, can't render the canvas,
- * which only holds the viewed Level. They render an annex of the exit Level instead (see annex.mjs), with
- * the camera moved the same way.
+ * Views through portals into another Scene can't render the canvas, which only holds the viewed Scene.
+ * They render an annex of the exit Scene instead (see annex.mjs), with the camera moved the same way.
  */
 export default class PortalWindows {
 
@@ -63,7 +62,7 @@ export default class PortalWindows {
   /* ---------------------------------------- */
 
   /**
-   * The annexes of other Scenes and Levels seen through portals, by Level UUID.
+   * The annexes of other Scenes seen through portals, by Scene UUID.
    * @type {Map<string, SceneAnnex>}
    */
   annexes = new Map();
@@ -109,10 +108,9 @@ export default class PortalWindows {
       w.mask.destroy();
       this.windows.delete(id);
     }
-    const level = canvas.level.id;
     const annexed = new Set();
     for ( const view of views ) {
-      if ( view.link.leadsAway(level) ) annexed.add(view.link.exitLevelDocument(level)?.uuid);
+      if ( view.link.crossScene ) annexed.add(view.link.exit.parent.uuid);
     }
     for ( const [uuid, annex] of this.annexes ) {
       if ( annexed.has(uuid) ) continue;
@@ -143,7 +141,7 @@ export default class PortalWindows {
     for ( const view of views ) {
       if ( view.source ) continue;
       const texture = this.windows.get(view.id).texture;
-      if ( view.link.leadsAway(level) ) this.#captureAnnex(view, texture);
+      if ( view.link.crossScene ) this.#captureAnnex(view, texture);
       else this.#capture(view, texture);
     }
     drawLitSeams(null);
@@ -152,15 +150,14 @@ export default class PortalWindows {
   /* ---------------------------------------- */
 
   /**
-   * Render the other Scene or Level seen through a portal into a texture.
+   * Render the other Scene seen through a portal into a texture.
    * @param {PortalView} view
    * @param {PIXI.RenderTexture} texture
    */
   #captureAnnex(view, texture) {
-    const level = view.link.exitLevelDocument(canvas.level.id);
-    if ( !level ) return;
-    let annex = this.annexes.get(level.uuid);
-    if ( !annex ) this.annexes.set(level.uuid, annex = new SceneAnnex(level));
+    const scene = view.link.exit.parent;
+    let annex = this.annexes.get(scene.uuid);
+    if ( !annex ) this.annexes.set(scene.uuid, annex = new SceneAnnex(scene));
     const stage = canvas.stage;
     const {transform} = view;
     annex.render(canvas.app.renderer, texture, {
@@ -330,7 +327,7 @@ export default class PortalWindows {
    */
   static #isSeen(token, ghosts) {
     const {x, y} = token.center;
-    return (!token.document.hidden || game.user.isGM) && token.document.includedInLevel(canvas.level)
+    return (!token.document.hidden || game.user.isGM)
       && ghosts.some(g => g.shape.contains(x, y) || (g.light?.contains(x, y)
         && canvas.effects.testInsideLight({x, y, elevation: token.document.elevation})));
   }

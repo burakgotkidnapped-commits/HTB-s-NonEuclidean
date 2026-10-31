@@ -1,29 +1,25 @@
 import {log} from "../constants.mjs";
 
 /**
- * Another Level, of another Scene or of this one, drawn inside the current canvas for portal views of it.
+ * Another Scene, drawn inside the current canvas for portal views of it.
  *
- * Foundry only draws the viewed Level, so a portal whose exit is elsewhere has nothing on the canvas
- * to look at. An annex is a light copy of the exit Level: its background, Tiles, Tokens, and
- * foreground, as plain sprites in its Scene's own coordinates, kept off the stage. Portal views of
- * the Level render it with the camera moved through the portal, masked to what the viewers see there.
+ * Foundry only draws the viewed Scene, so a portal whose exit is elsewhere has nothing on the canvas
+ * to look at. An annex is a light copy of the exit Scene: its background, Tiles, Tokens, and
+ * foreground, as plain sprites in its own coordinates, kept off the stage. Portal views of the Scene
+ * render it with the camera moved through the portal, masked to what the viewers see there.
  *
  * Lighting isn't carried over: the annex is darkened by the Scene's darkness level as a whole.
  */
 export default class SceneAnnex {
   /**
-   * @param {Level} level    The Level to draw
+   * @param {Scene} scene    The Scene to draw
    */
-  constructor(level) {
-    this.level = level;
-    this.scene = level.parent;
+  constructor(scene) {
+    this.scene = scene;
     this.container = new PIXI.Container();
     this.container.eventMode = "none";
     live.add(this);
   }
-
-  /** @type {Level} */
-  level;
 
   /** @type {Scene} */
   scene;
@@ -90,8 +86,8 @@ export default class SceneAnnex {
     this.dirty = false;
     const c = this.container;
     for ( const child of c.removeChildren() ) child.destroy({children: true});
-    const {rect, sceneRect, maxR} = this.scene.dimensions;
-    const level = this.level;
+    const scene = this.scene;
+    const {rect, sceneRect, maxR} = scene.dimensions;
 
     // What the viewers don't see is dark, as unexplored fog is
     const backdrop = c.addChild(new PIXI.Graphics());
@@ -102,20 +98,20 @@ export default class SceneAnnex {
     this.#sight = c.addChild(new PIXI.Graphics());
     content.mask = this.#sight;
 
-    // The Level's background, under everything else
-    const color = Number(level.background.color ?? this.scene.backgroundColor ?? 0x999999);
+    // The Scene's background, under everything else
+    const color = Number(scene.backgroundColor ?? 0x999999);
     content.addChild(new PIXI.Graphics()).beginFill(color).drawShape(sceneRect).endFill();
-    const background = this.#levelSprite(level.background);
+    const background = this.#sceneSprite(scene.background);
     if ( background ) content.addChild(background);
 
     // Tiles and Tokens, by elevation, then Tiles under Tokens, then by sort
     const placeables = [];
-    for ( const tile of this.scene.tiles ) {
-      if ( tile.hidden || !tile.texture.src || !tile.includedInLevel(level.id) ) continue;
+    for ( const tile of scene.tiles ) {
+      if ( tile.hidden || !tile.texture.src ) continue;
       placeables.push({elevation: tile.elevation, kind: 0, sort: tile.sort, draw: () => this.#tileSprite(tile)});
     }
-    for ( const token of this.scene.tokens ) {
-      if ( (token.hidden && !game.user.isGM) || !token.texture.src || !token.includedInLevel(level.id) ) continue;
+    for ( const token of scene.tokens ) {
+      if ( (token.hidden && !game.user.isGM) || !token.texture.src ) continue;
       placeables.push({elevation: token.elevation, kind: 1, sort: token.sort, draw: () => this.#tokenSprite(token)});
     }
     placeables.sort((a, b) => (a.elevation - b.elevation) || (a.kind - b.kind) || (a.sort - b.sort));
@@ -124,7 +120,7 @@ export default class SceneAnnex {
       if ( sprite ) content.addChild(sprite);
     }
 
-    const foreground = this.#levelSprite(level.foreground);
+    const foreground = this.#sceneSprite({src: scene.foreground});
     if ( foreground ) content.addChild(foreground);
 
     // No lights are drawn: the whole Scene is as dark as its darkness level, unless globally lit
@@ -151,11 +147,11 @@ export default class SceneAnnex {
   /* ---------------------------------------- */
 
   /**
-   * A sprite covering the Scene with a Level's background or foreground image.
-   * @param {{src: string|null, tint: Color}} data
+   * A sprite covering the Scene with its background or foreground image.
+   * @param {{src: string|null, tint?: Color}} data
    * @returns {PIXI.Sprite|null}
    */
-  #levelSprite({src, tint}) {
+  #sceneSprite({src, tint}) {
     const texture = this.#getTexture(src);
     if ( !texture ) return null;
     const {sceneRect} = this.scene.dimensions;
@@ -262,7 +258,7 @@ export function registerAnnexes() {
   const markScene = scene => {
     for ( const annex of SceneAnnex.of(scene) ) annex.dirty = true;
   };
-  for ( const type of ["Token", "Tile", "Level"] ) {
+  for ( const type of ["Token", "Tile"] ) {
     for ( const action of ["create", "update", "delete"] ) Hooks.on(`${action}${type}`, doc => markScene(doc.parent));
   }
   Hooks.on("updateScene", markScene);

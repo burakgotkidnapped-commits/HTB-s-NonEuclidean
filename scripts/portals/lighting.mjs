@@ -145,7 +145,7 @@ function hardenPortalSeams(source) {
   if ( !depth ) return;
   const {x, y} = source.shape.origin;
   const radius = source.shape.config.radius;
-  const width = (Math.abs(source.constructor.EDGE_OFFSET) * (canvas.scene._source.grid.size / 100)) + 1;
+  const width = (Math.abs(source.constructor.EDGE_OFFSET ?? 0) * (canvas.scene._source.grid.size / 100)) + 1;
   const planes = getViewedPortalLinks().flatMap(link => [link.from, link.to])
     .filter(({center, halfLength}) => Math.hypot(center.x - x, center.y - y) < radius + halfLength + width);
   if ( !planes.length ) return;
@@ -177,8 +177,7 @@ function hardenPortalSeams(source) {
  */
 function isCarried(source) {
   return !source.isPortalGhost && source.active && !source.isPreview && source.data.walls && (source.radius > 0)
-    && !!source.shape && !(source instanceof foundry.canvas.sources.GlobalLightSource)
-    && (source.data.level === canvas.level.id);
+    && !!source.shape && !(source instanceof foundry.canvas.sources.GlobalLightSource);
 }
 
 /**

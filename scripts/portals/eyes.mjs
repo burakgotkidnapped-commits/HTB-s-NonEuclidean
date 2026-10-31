@@ -35,7 +35,7 @@ export function getEyes() {
  */
 function computeSight(origin) {
   try {
-    return CONFIG.Canvas.polygonBackends.sight.create(origin, {type: "sight", level: canvas.level});
+    return CONFIG.Canvas.polygonBackends.sight.create(origin, {type: "sight"});
   } catch(err) {
     return null;
   }

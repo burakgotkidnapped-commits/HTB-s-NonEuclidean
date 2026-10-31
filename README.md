@@ -1,13 +1,16 @@
 # HTB's Non-Euclidean
 
-A Foundry Virtual Tabletop v14 module for non-Euclidean geometry.
+A Foundry Virtual Tabletop v13 module for non-Euclidean geometry.
+
+This is the v13 version of the module. For Foundry v14, use the version on the
+[main branch](https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidean).
 
 ## Installation
 
 In Foundry's **Add-on Modules** tab, click **Install Module** and paste this manifest URL:
 
 ```
-https://github.com/burakgotkidnapped-commits/HTB-s-NonEuclidean/releases/latest/download/module.json
+https://raw.githubusercontent.com/burakgotkidnapped-commits/HTB-s-NonEuclidean/v13/module.json
 ```
 
 ## Features
@@ -77,25 +80,11 @@ Paste the UUID of a wall in another Scene as the exit (for example from
 `canvas.walls.controlled[0].document.uuid` in the console there). The Token walks up to the portal, then moves to the other Scene. This one
 is a teleport, not seamless. Everyone who had the Token selected goes to the other Scene with it,
 the view kept on it and the Token still selected.
-Looking at the portal shows the other Scene: the exit Level's background and foreground, its Tiles,
+Looking at the portal shows the other Scene: its background and foreground, its Tiles,
 and its Tokens, as far as the viewer sees past that Scene's walls. Tokens move there live as they are
 moved in that Scene. Its lights aren't drawn yet: the whole view is darkened by that Scene's darkness
 level instead, unless its global illumination lights it. Portals in the other Scene show nothing beyond
 them, and hidden Tokens there show only to the GM.
-
-#### Another Level
-
-Portals to other levels technically work but are not recommended.
-
-A portal whose exit wall is on another Level of the same Scene works the same way as one into another
-Scene. Viewing the entrance's Level, you can pick the exit by clicking only if it shows on that Level;
-otherwise paste its UUID (view the exit's Level, select the wall, and copy
-`canvas.walls.controlled[0].document.uuid` from the console). Looking at the portal shows the exit Level:
-its background and foreground, Tiles, and Tokens, past its walls, darkened as described above. The Token
-walks up to the portal, then moves onto the exit Level at the matching point. It stays as high above that
-Level's base as it was above the base of the Level it left. Everyone who had the Token selected switches
-to the exit Level with it, the view kept on it. A portal is seamless only when both of its walls are on the
-Level being viewed.
 
 #### Limitations
 
@@ -106,13 +95,10 @@ Level being viewed.
   depth outside loops, portals show nothing beyond them.
 - Copies past the view depth show what the deepest drawn level sees. A Token's sight range is not
   counted again for each copy, so a limited sight range doesn't fade out the far copies.
-- Views into another Scene or Level show everything in line of sight, however dark: sight range, vision
+- Views into another Scene show everything in line of sight, however dark: sight range, vision
   modes, and lights there aren't taken into account yet, so Tokens standing in the dark are seen too.
-- Switching Levels redraws the canvas, so crossing into another Level isn't seamless: the
-  screen reloads for a moment.
 - Darkness sources, and lights set not to be constrained by walls, don't pass through portals.
-  Lights only pass through portals on the Level being viewed. At most 64 lights are carried
-  through portals at once.
+  At most 64 lights are carried through portals at once.
 - Portal views only render while you have a Token selected (or vision Tokens as a player), so the
   GM sees the real map when editing.
 - All movement is routed through portals, including direct `update({x, y})` calls, which Foundry
@@ -140,8 +126,8 @@ scripts/
   settings.mjs
   portals/
     walls.mjs              Portal section of the wall config, exit picking, two-way links
-    teleport.mjs           portals into other Scenes and Levels
-    annex.mjs              draws other Scenes and Levels for portal views of them
+    teleport.mjs           portals into other Scenes
+    annex.mjs              draws other Scenes for portal views of them
     eyes.mjs               where the viewer looks from
     geometry.mjs           portal walls and the transform between them
     pathing.mjs            routes movement through portals

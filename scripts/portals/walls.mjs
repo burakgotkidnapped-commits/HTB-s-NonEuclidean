@@ -135,35 +135,36 @@ function injectPortalSection(app, element) {
   const flags = app.document.flags[MODULE_ID]?.portal ?? {};
   const name = key => `flags.${MODULE_ID}.portal.${key}`;
   const id = key => `${app.id}-noneuclid-${key}`;
+  const loc = key => game.i18n.localize(key);
 
   const fieldset = document.createElement("fieldset");
   fieldset.className = "noneuclid-portal";
   fieldset.innerHTML = `
-    <legend>${_loc("NONEUCLID.WallPortal.Legend")}</legend>
-    <p class="hint">${_loc("NONEUCLID.WallPortal.Hint")}</p>
+    <legend>${loc("NONEUCLID.WallPortal.Legend")}</legend>
+    <p class="hint">${loc("NONEUCLID.WallPortal.Hint")}</p>
     <div class="form-group">
-      <label for="${id("exit")}">${_loc("NONEUCLID.WallPortal.Exit")}</label>
+      <label for="${id("exit")}">${loc("NONEUCLID.WallPortal.Exit")}</label>
       <div class="form-fields">
-        <input type="text" id="${id("exit")}" name="${name("exit")}" placeholder="${_loc("NONEUCLID.WallPortal.NoExit")}">
+        <input type="text" id="${id("exit")}" name="${name("exit")}" placeholder="${loc("NONEUCLID.WallPortal.NoExit")}">
         <button type="button" class="icon fa-solid fa-crosshairs" data-noneuclid-pick
-          data-tooltip aria-label="${_loc("NONEUCLID.WallPortal.Pick")}"></button>
+          data-tooltip aria-label="${loc("NONEUCLID.WallPortal.Pick")}"></button>
       </div>
-      <p class="hint">${_loc("NONEUCLID.WallPortal.ExitHint")}</p>
+      <p class="hint">${loc("NONEUCLID.WallPortal.ExitHint")}</p>
     </div>
     <div class="form-group">
-      <label for="${id("flip")}">${_loc("NONEUCLID.WallPortal.Flip")}</label>
+      <label for="${id("flip")}">${loc("NONEUCLID.WallPortal.Flip")}</label>
       <div class="form-fields"><input type="checkbox" id="${id("flip")}" name="${name("flip")}"></div>
-      <p class="hint">${_loc("NONEUCLID.WallPortal.FlipHint")}</p>
+      <p class="hint">${loc("NONEUCLID.WallPortal.FlipHint")}</p>
     </div>
     <div class="form-group">
-      <label for="${id("twoWay")}">${_loc("NONEUCLID.WallPortal.TwoWay")}</label>
+      <label for="${id("twoWay")}">${loc("NONEUCLID.WallPortal.TwoWay")}</label>
       <div class="form-fields"><input type="checkbox" id="${id("twoWay")}" name="${name("twoWay")}"></div>
-      <p class="hint">${_loc("NONEUCLID.WallPortal.TwoWayHint")}</p>
+      <p class="hint">${loc("NONEUCLID.WallPortal.TwoWayHint")}</p>
     </div>
     <div class="form-group">
-      <label for="${id("window")}">${_loc("NONEUCLID.WallPortal.Window")}</label>
+      <label for="${id("window")}">${loc("NONEUCLID.WallPortal.Window")}</label>
       <div class="form-fields"><input type="checkbox" id="${id("window")}" name="${name("window")}"></div>
-      <p class="hint">${_loc("NONEUCLID.WallPortal.WindowHint")}</p>
+      <p class="hint">${loc("NONEUCLID.WallPortal.WindowHint")}</p>
     </div>`;
 
   // Set values through the DOM so nothing user-provided is parsed as HTML

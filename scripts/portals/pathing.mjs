@@ -54,7 +54,7 @@ function rewriteMovement(token, options) {
     return {...w, x: Math.round(center.x - pivot.x), y: Math.round(center.y - pivot.y)};
   };
   // Tokens keep their size through portals, even ones that scale the space beyond them
-  const traverse = (link, w) => place({...w, level: link.exitLevel(w.level)}, link.apply(centerOf(w)));
+  const traverse = (link, w) => place(w, link.apply(centerOf(w)));
 
   // Past a portal the grid need not line up with the grid at the entrance, so a Token sent to a grid
   // space would come out between spaces: snap it back onto the grid, unless that takes it back across a portal
@@ -68,13 +68,13 @@ function rewriteMovement(token, options) {
     const c0 = centerOf(w);
     const c1 = centerOf(snapped);
     const crosses = ({a, b}) => foundry.utils.lineSegmentIntersects(c0, c1, a, b);
-    return links.some(link => crosses(link.from) || (!link.leadsAway(w.level) && crosses(link.to))) ? w : snapped;
+    return links.some(link => crosses(link.from) || (!link.crossScene && crosses(link.to))) ? w : snapped;
   };
 
   // Every waypoint gets an explicit action: core fills a missing action from the previous waypoint,
   // which after a jump through a portal would be "displace" and teleport the Token the rest of the way
-  const {x, y, elevation, width, height, shape, level} = token._source;
-  let previous = {x, y, elevation, width, height, shape, level, action: token.movementAction};
+  const {x, y, elevation, width, height, shape} = token._source;
+  let previous = {x, y, elevation, width, height, shape, action: token.movementAction};
   let original = previous;
   const passedThrough = [];
   const waypoints = [];
@@ -101,10 +101,9 @@ function rewriteMovement(token, options) {
         const length = Math.hypot(p1.x - p0.x, p1.y - p0.y);
         if ( length < 1 ) break;
 
-        // Find the first portal plane crossed by this segment on this Level
+        // Find the first portal plane crossed by this segment
         let hit = null;
         for ( const link of links ) {
-          if ( !link.entrance.includedInLevel(previous.level) ) continue;
           const t = link.crossing(p0, p1);
           if ( (t === null) || ((t * length) < JUMP_MARGIN) ) continue;
           if ( !hit || (t < hit.t) ) hit = {link, t};
@@ -129,9 +128,9 @@ function rewriteMovement(token, options) {
           break;
         }
 
-        // An exit in another Scene or on another Level: walk up to the portal, then teleport once the
-        // movement is done, and the view follows the Token there
-        if ( link.leadsAway(previous.level) ) {
+        // An exit in another Scene: walk up to the portal, then teleport once the movement is done,
+        // and the view follows the Token there
+        if ( link.crossScene ) {
           waypoints.push({...before, checkpoint: true});
           teleport = {wall: link.entrance.uuid, point: along(JUMP_MARGIN), snap: drawnSnapped, client: CLIENT_ID};
           crossings++;
